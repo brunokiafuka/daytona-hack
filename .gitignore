@@ -1,0 +1,4 @@
+node_modules/
+.env
+# episode trajectories, evals and results
+.data/
