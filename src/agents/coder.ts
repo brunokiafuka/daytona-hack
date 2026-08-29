@@ -1,5 +1,5 @@
-import { SANDBOX_TOOLS, runAgent, sandboxExecutor } from "../agent.js";
-import type { AgentResult } from "../agent.js";
+import { runAgent, sandboxExecutor } from "../agent.js";
+import type { AgentResult, Effort } from "../agent.js";
 import type { RepoSandbox } from "../sandbox.js";
 import type { Task } from "../tasks.js";
 import type { Trajectory } from "../trajectory.js";
@@ -26,7 +26,7 @@ export async function runCoder(
   task: Task,
   sandbox: RepoSandbox,
   trajectory: Trajectory,
-  opts: { plan?: Plan; feedback?: Review; effort?: "low" | "medium" | "high" | "xhigh" | "max" },
+  opts: { plan?: Plan; feedback?: Review; effort?: Effort },
 ): Promise<AgentResult> {
   const protectedPaths = task.protected_paths ?? ["test", "tests", "__tests__", "spec"];
   const isProtected = (p: string) => protectedPaths.some((pp) => p === pp || p.startsWith(pp + "/") || p.includes(`/${pp}/`) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(p) || /(^|\/)test_.*\.py$/.test(p));
@@ -44,7 +44,7 @@ export async function runCoder(
     {
       name: "coder",
       system: SYSTEM,
-      tools: [SANDBOX_TOOLS.bash!, SANDBOX_TOOLS.read_file!, SANDBOX_TOOLS.write_file!],
+      tools: ["bash", "read_file", "write_file"],
       effort: opts.effort ?? "xhigh",
       maxSteps: 60,
       maxWallMs: 20 * 60_000,

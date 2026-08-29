@@ -1,5 +1,5 @@
-import { SANDBOX_TOOLS, parseJson, runAgent, sandboxExecutor } from "../agent.js";
-import type { AgentResult } from "../agent.js";
+import { parseJson, runAgent, sandboxExecutor } from "../agent.js";
+import type { AgentResult, Effort } from "../agent.js";
 import type { RepoSandbox } from "../sandbox.js";
 import type { Task } from "../tasks.js";
 import type { Trajectory } from "../trajectory.js";
@@ -35,13 +35,13 @@ export async function runReviewer(
   trajectory: Trajectory,
   diff: string,
   testOutput: string,
-  effort?: "low" | "medium" | "high" | "xhigh" | "max",
+  effort?: Effort,
 ): Promise<{ review: Review; result: AgentResult }> {
   const result = await runAgent(
     {
       name: "reviewer",
       system: SYSTEM,
-      tools: [SANDBOX_TOOLS.bash!, SANDBOX_TOOLS.read_file!],
+      tools: ["bash", "read_file"],
       effort,
       maxSteps: 20,
       maxWallMs: 8 * 60_000,

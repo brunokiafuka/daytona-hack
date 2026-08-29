@@ -4,12 +4,12 @@ Autonomous engineering agent: **GitHub issue → plan → implement → tests �
 inside a [Daytona](https://daytona.io) sandbox and every agent action recorded as a trajectory event.
 
 Structure follows the [technical plan](https://docs.google.com/document/d/1KAVbx_shjXag1OA8HArvU0Iq6HZzxM1bU7X0bvCX7gA/edit).
-The sandbox/tool-loop shape is lifted from compass's `apps/slack-server` (Modal → Daytona, OpenAI → Claude).
+The sandbox/tool-loop shape is lifted from compass's `apps/slack-server` (Modal → Daytona; the raw OpenAI fetch loop → Vercel AI SDK).
 
 ```
 src/
   sandbox.ts        Daytona sandbox: boot → clone@commit → exec/read/write → terminate
-  agent.ts          bounded Claude tool loop; records every call on the trajectory
+  agent.ts          bounded tool loop on the Vercel AI SDK; records every call on the trajectory
   agents/planner.ts read-only investigation → {diagnosis, files, plan}
   agents/coder.ts   closed loop implement→test→fix; test paths are write-protected
   agents/reviewer.ts read-only gate with a 4-item rubric → approve/reject
@@ -24,7 +24,7 @@ src/
 
 ```sh
 pnpm install
-cp .env.example .env     # DAYTONA_API_KEY, ANTHROPIC_API_KEY (or `ant auth login`)
+cp .env.example .env     # DAYTONA_API_KEY, OPENAI_API_KEY
 pnpm sandbox:smoke       # boots a sandbox, runs a command, tears it down
 ```
 

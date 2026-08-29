@@ -18,7 +18,8 @@ import type { AgentUsage } from "./trajectory.js";
  * §10/§12 — a policy is which agents run and how. The orchestrator runs one
  * episode of one policy on one task: sandbox → agents → eval → reward.
  */
-export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+export type { Effort } from "./agent.js";
+import type { Effort } from "./agent.js";
 
 export interface Policy {
   name: string;

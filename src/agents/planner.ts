@@ -1,5 +1,5 @@
-import { SANDBOX_TOOLS, parseJson, runAgent, sandboxExecutor } from "../agent.js";
-import type { AgentResult } from "../agent.js";
+import { parseJson, runAgent, sandboxExecutor } from "../agent.js";
+import type { AgentResult, Effort } from "../agent.js";
 import type { RepoSandbox } from "../sandbox.js";
 import type { Task } from "../tasks.js";
 import type { Trajectory } from "../trajectory.js";
@@ -28,14 +28,14 @@ export async function runPlanner(
   task: Task,
   sandbox: RepoSandbox,
   trajectory: Trajectory,
-  effort?: "low" | "medium" | "high" | "xhigh" | "max",
+  effort?: Effort,
 ): Promise<{ plan: Plan | undefined; result: AgentResult }> {
   const exec = sandboxExecutor(sandbox);
   const result = await runAgent(
     {
       name: "planner",
       system: SYSTEM,
-      tools: [SANDBOX_TOOLS.bash!, SANDBOX_TOOLS.read_file!],
+      tools: ["bash", "read_file"],
       effort,
       maxSteps: 25,
       maxWallMs: 8 * 60_000,
