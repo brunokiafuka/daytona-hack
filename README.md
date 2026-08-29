@@ -75,3 +75,22 @@ Outputs land in `.data/episodes/<episode_id>/` (`events.jsonl`, `plan.json`, `re
 - **Reviewer gates, doesn't score.** It emits a boolean rubric; it is not part of the reward.
 - **Planner is graded against `reference_files`** when the task has them — precision/recall on file identification,
   no LLM judge needed.
+
+## Dashboard & live runs
+
+```bash
+pnpm dashboard                                  # http://localhost:4173 — live UI + API over .data/
+pnpm issue uselucerna/scribl#15 A               # live run: import the issue as a task, run one episode
+pnpm tasks:import uselucerna/scribl 5,6,7,15     # import issues as benchmark tasks (tasks/scribl-<N>.json)
+pnpm experiment A,B,C scribl-15,scribl-5         # benchmark; EXPERIMENT_ID/CONCURRENCY optional
+```
+
+The dashboard's **Trigger** panel runs the same commands (`POST /api/runs/issue`, `POST /api/runs/experiment`)
+as child processes and follows them live. Per-repository setup/test/oracle commands live in `REPO_PROFILES`
+(`src/github.ts`); scribl has no test suite, so the visible signal is `typecheck` and the hidden oracle is
+`typecheck && build`.
+
+Each episode directory now also carries `status.json` (live phase/sandboxes), `log.jsonl` (boot, clone, setup,
+test and oracle output) and `task.json` (the task minus `evaluation_command`). `dashboard/adapter.mjs` maps these
+into the read model (`/api/episodes`, `/api/episodes/:id`, `/api/experiments[/:id]`, `/api/sandboxes`, `/api/runs`).
+The API key is re-read from `.env` on every trigger, so rotating it needs no restart.

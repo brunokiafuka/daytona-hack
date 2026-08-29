@@ -1,0 +1,16 @@
+{
+  "task_id": "scribl-15",
+  "repository": "uselucerna/scribl",
+  "base_commit": "d9b902d826a15a6ac110cf1741bdee839fda099a",
+  "issue": "Title: Export docs\n\nBe able to export our documents to eg. PDF format",
+  "setup_command": "npm i -g pnpm@10.11.1 >/dev/null 2>&1 && pnpm install --frozen-lockfile",
+  "test_command": "pnpm --filter @scribl/frontend typecheck",
+  "evaluation_command": "pnpm --filter @scribl/frontend typecheck && pnpm --filter @scribl/frontend build",
+  "meta": {
+    "issue_number": 15,
+    "issue_title": "Export docs",
+    "issue_url": "https://github.com/uselucerna/scribl/issues/15",
+    "labels": [],
+    "imported_at": "2026-08-29T13:40:14.295Z"
+  }
+}

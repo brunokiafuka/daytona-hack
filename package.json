@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "episode": "tsx src/index.ts episode",
+    "issue": "tsx src/index.ts issue",
+    "tasks:import": "tsx src/index.ts tasks:import",
     "experiment": "tsx src/index.ts experiment",
     "sandbox:smoke": "tsx src/index.ts smoke",
     "dashboard": "node dashboard/server.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "demo": "tsx src/demo.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.51",

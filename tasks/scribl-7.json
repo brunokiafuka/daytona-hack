@@ -1,0 +1,18 @@
+{
+  "task_id": "scribl-7",
+  "repository": "uselucerna/scribl",
+  "base_commit": "d9b902d826a15a6ac110cf1741bdee839fda099a",
+  "issue": "Title: Add Yjs integration for real-time editing\n\nEnable collaborative editing using Yjs and Hocuspocus.\n- [ ] Sync Monaco editor state with Yjs\n- [ ] Connect to Hocuspocus WebSocket server\n- [ ] Handle awareness",
+  "setup_command": "npm i -g pnpm@10.11.1 >/dev/null 2>&1 && pnpm install --frozen-lockfile",
+  "test_command": "pnpm --filter @scribl/frontend typecheck",
+  "evaluation_command": "pnpm --filter @scribl/frontend typecheck && pnpm --filter @scribl/frontend build",
+  "meta": {
+    "issue_number": 7,
+    "issue_title": "Add Yjs integration for real-time editing",
+    "issue_url": "https://github.com/uselucerna/scribl/issues/7",
+    "labels": [
+      "phase#2:Editor + GitHub Sync"
+    ],
+    "imported_at": "2026-08-29T13:09:04.106Z"
+  }
+}

@@ -1,5 +1,22 @@
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
+
+/**
+ * 429s are retried by the SDK, which is right for rate limits but wrong for an
+ * empty balance — that would silently back off for minutes. Surface quota
+ * errors immediately as a non-retryable failure.
+ */
+const openai = createOpenAI({
+  fetch: async (input, init) => {
+    const res = await fetch(input, init);
+    if (res.status === 429) {
+      const body = await res.clone().text();
+      if (/insufficient_quota|credit_balance_exhausted|no credits/i.test(body)) throw new Error("OpenAI quota exhausted: add credits at platform.openai.com/settings/organization/billing");
+    }
+    return res;
+  },
+});
 import { generateText, stepCountIs, tool } from "ai";
+import type { ModelMessage } from "ai";
 import type { ToolSet } from "ai";
 import { z } from "zod";
 
@@ -12,7 +29,9 @@ import type { AgentName, AgentUsage, Trajectory } from "./trajectory.js";
  * guard, run and record it on the trajectory. Bounded by steps and wall
  * clock so a stuck agent fails loudly instead of running forever.
  */
-export const MODEL = process.env.OPENAI_MODEL ?? "gpt-5.5";
+/** Default model; override globally with OPENAI_MODEL or per agent with OPENAI_MODEL_PLANNER/CODER/REVIEWER. */
+export const MODEL = process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
+export const modelFor = (agent: string): string => process.env[`OPENAI_MODEL_${agent.toUpperCase()}`] ?? MODEL;
 const MAX_TOOL_OUTPUT = 8_000; // chars — a test dump can be 50k+ and would sink the context
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
@@ -86,13 +105,17 @@ export async function runAgent(
 
   try {
     const result = await generateText({
-      model: openai(MODEL),
+      model: openai(modelFor(cfg.name)),
       system: cfg.system,
       prompt,
       tools,
       stopWhen: stepCountIs(cfg.maxSteps),
+      prepareStep: ({ messages }) => ({ messages: compactHistory(messages) }),
+      // Org-level TPM limits are shared by every concurrent agent; exponential
+      // backoff (2s, 4s, … capped by the wall clock) beats failing the episode.
+      maxRetries: Number(process.env.MODEL_MAX_RETRIES ?? 8),
       abortSignal: abort,
-      providerOptions: { openai: { reasoningEffort: cfg.effort ?? "high" } },
+      providerOptions: { openai: { reasoningEffort: cfg.effort ?? "medium" } },
       onStepFinish: ({ usage: u }) => {
         usage.turns++;
         usage.input_tokens += u.inputTokens ?? 0;
@@ -101,11 +124,58 @@ export async function runAgent(
       },
     });
     const hitCap = result.steps.length >= cfg.maxSteps && result.finishReason === "tool-calls";
-    return { text: result.text, usage, stopped_by: hitCap ? "max_steps" : "end_turn" };
+    let text = result.text;
+    if (hitCap && !text.trim()) {
+      // Step budget exhausted mid-exploration: one tool-less turn to force the
+      // final answer from what was learned, instead of returning nothing.
+      const final = await generateText({
+        model: openai(modelFor(cfg.name)),
+        system: cfg.system,
+        messages: [
+          { role: "user", content: prompt },
+          ...result.response.messages,
+          { role: "user", content: "Your tool budget is exhausted. Produce your final answer now, in exactly the format the instructions require, based on what you have already seen. If you are unsure, say so through the format (e.g. low confidence / reject) rather than omitting the answer." },
+        ],
+        maxRetries: Number(process.env.MODEL_MAX_RETRIES ?? 8),
+        abortSignal: abort,
+        providerOptions: { openai: { reasoningEffort: "low" } },
+      });
+      text = final.text;
+      usage.turns++;
+      usage.input_tokens += final.usage.inputTokens ?? 0;
+      usage.output_tokens += final.usage.outputTokens ?? 0;
+      usage.cache_read_input_tokens += final.usage.inputTokenDetails?.cacheReadTokens ?? 0;
+    }
+    return { text, usage, stopped_by: hitCap ? "max_steps" : "end_turn" };
   } catch (err) {
     if (abort.aborted) return { text: "", usage, stopped_by: "timeout" };
     throw err;
   }
+}
+
+/**
+ * Keep the last KEEP_RECENT tool results verbatim and shrink older ones to a
+ * one-line stub. The agent already acted on old observations; carrying 8k-char
+ * file dumps for 60 steps is what pushes a step past 50k tokens and trips org
+ * TPM limits. The trajectory on disk keeps the full outputs.
+ */
+const KEEP_RECENT = Number(process.env.AGENT_KEEP_RECENT ?? 8);
+const STUB_CHARS = 300;
+function compactHistory(messages: ModelMessage[]): ModelMessage[] {
+  const toolIdx = messages.map((m, i) => (m.role === "tool" ? i : -1)).filter((i) => i >= 0);
+  const cutoff = toolIdx.length > KEEP_RECENT ? toolIdx[toolIdx.length - KEEP_RECENT]! : -1;
+  return messages.map((m, i) => {
+    if (m.role !== "tool" || i >= cutoff || typeof m.content === "string") return m;
+    return {
+      ...m,
+      content: m.content.map((part) => {
+        if (part.type !== "tool-result") return part;
+        const out = part.output;
+        if (out.type !== "text" || out.value.length <= STUB_CHARS) return part;
+        return { ...part, output: { type: "text" as const, value: `${out.value.slice(0, STUB_CHARS)}\n… [earlier output elided; ${out.value.length} chars]` } };
+      }),
+    };
+  });
 }
 
 function clip(s: string): string {

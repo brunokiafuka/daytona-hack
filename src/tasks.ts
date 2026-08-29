@@ -17,6 +17,8 @@ export interface Task {
   protected_paths?: string[];
   /** Files the reference fix touched — free planner ground truth. */
   reference_files?: string[];
+  /** Presentation-only metadata (issue number/title/url). Never shown to agents. */
+  meta?: { issue_number?: number; issue_title?: string; issue_url?: string; labels?: string[]; imported_at?: string };
 }
 
 const TASKS_DIR = "tasks";

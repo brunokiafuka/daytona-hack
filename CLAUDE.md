@@ -8,7 +8,9 @@ Before making product, architecture, data-model, orchestration, evaluation, or d
 runner; do not couple it directly to internal artifact files or storage.
 
 - Sandboxes are Daytona (`@daytonaio/sdk`); model calls go through the Vercel AI SDK (`ai` + `@ai-sdk/openai`,
-  default `gpt-5.5`, `OPENAI_MODEL` to override). Trajectory capture lives inside each tool's `execute` in `src/agent.ts`.
+  default `gpt-5.4-mini`, `OPENAI_MODEL` or `OPENAI_MODEL_<AGENT>` to override). Trajectory capture lives inside each tool's `execute` in `src/agent.ts`.
 - Agents never commit/push; the orchestrator owns git. Agents never receive `evaluation_command`.
 - New benchmark tasks go in `tasks/<id>.json` — schema in `src/tasks.ts`.
-- `.data/` is generated output and gitignored.
+- `.data/` is generated output and gitignored. Episode dirs carry `status.json`, `log.jsonl`, `task.json` + artifacts;
+  `dashboard/adapter.mjs` is the only reader. `dashboard/server.mjs` also spawns runs (`POST /api/runs/*`).
+- Real issues come from `pnpm issue`/`pnpm tasks:import`; per-repo commands live in `REPO_PROFILES` (`src/github.ts`).

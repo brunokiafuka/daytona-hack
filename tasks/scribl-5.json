@@ -1,0 +1,18 @@
+{
+  "task_id": "scribl-5",
+  "repository": "uselucerna/scribl",
+  "base_commit": "d9b902d826a15a6ac110cf1741bdee839fda099a",
+  "issue": "Title: Integrate Monaco Editor for Markdown\n\nRender a Monaco editor instance for `.md` files.\n- [ ] Monaco editor setup\n- [ ] GitHub-flavored markdown support\n- [ ] Autosizing and scroll syncing",
+  "setup_command": "npm i -g pnpm@10.11.1 >/dev/null 2>&1 && pnpm install --frozen-lockfile",
+  "test_command": "pnpm --filter @scribl/frontend typecheck",
+  "evaluation_command": "pnpm --filter @scribl/frontend typecheck && pnpm --filter @scribl/frontend build",
+  "meta": {
+    "issue_number": 5,
+    "issue_title": "Integrate Monaco Editor for Markdown",
+    "issue_url": "https://github.com/uselucerna/scribl/issues/5",
+    "labels": [
+      "phase#2:Editor + GitHub Sync"
+    ],
+    "imported_at": "2026-08-29T13:09:00.889Z"
+  }
+}

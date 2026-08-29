@@ -1,0 +1,18 @@
+{
+  "task_id": "scribl-6",
+  "repository": "uselucerna/scribl",
+  "base_commit": "d9b902d826a15a6ac110cf1741bdee839fda099a",
+  "issue": "Title: Load and save markdown via GitHub API\n\nConnect to GitHub to fetch and save markdown content as files.\n- [ ] Load `.md` file via GitHub API\n- [ ] Save updates via PUT (commits)\n- [ ] Handle auth and rate limits",
+  "setup_command": "npm i -g pnpm@10.11.1 >/dev/null 2>&1 && pnpm install --frozen-lockfile",
+  "test_command": "pnpm --filter @scribl/frontend typecheck",
+  "evaluation_command": "pnpm --filter @scribl/frontend typecheck && pnpm --filter @scribl/frontend build",
+  "meta": {
+    "issue_number": 6,
+    "issue_title": "Load and save markdown via GitHub API",
+    "issue_url": "https://github.com/uselucerna/scribl/issues/6",
+    "labels": [
+      "phase#2:Editor + GitHub Sync"
+    ],
+    "imported_at": "2026-08-29T13:09:02.281Z"
+  }
+}

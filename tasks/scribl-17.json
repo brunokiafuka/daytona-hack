@@ -1,0 +1,16 @@
+{
+  "task_id": "scribl-17",
+  "repository": "uselucerna/scribl",
+  "base_commit": "d9b902d826a15a6ac110cf1741bdee839fda099a",
+  "issue": "Title: Slack integration\n\n- Pull threads and gen docs",
+  "setup_command": "npm i -g pnpm@10.11.1 >/dev/null 2>&1 && pnpm install --frozen-lockfile",
+  "test_command": "pnpm --filter @scribl/frontend typecheck",
+  "evaluation_command": "pnpm --filter @scribl/frontend typecheck && pnpm --filter @scribl/frontend build",
+  "meta": {
+    "issue_number": 17,
+    "issue_title": "Slack integration",
+    "issue_url": "https://github.com/uselucerna/scribl/issues/17",
+    "labels": [],
+    "imported_at": "2026-08-29T13:52:21.314Z"
+  }
+}
