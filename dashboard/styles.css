@@ -275,3 +275,66 @@ h1 { font-size:24px; }
 
 .page > * + .panel,.page > * + .overview-grid,.page > * + .experiment-summary,.page > * + .split-view,.page > * + .episodes-panel { margin-top:var(--s4); }
 .page > .page-header + * { margin-top:0; }
+
+/* ---- organisation overview (replay) ---- */
+.backlog-health,.organisation-pipeline,.priority-queue,.learning-evidence { padding:18px 20px; margin-top:12px; }
+.backlog-period,.queue-count,.pipeline-success,.section-context,.flow-index,.queue-id,.priority,.queue-age,.queue-stage,.success-score em,.policy-gain small,.policy-gain span { font-family:var(--mono); font-size:11px; }
+.backlog-period,.queue-count { color:var(--dim); }
+.pipeline-utilities { display:flex; align-items:center; gap:10px; }
+.pipeline-success { color:var(--mint); white-space:nowrap; }
+.section-context { margin:8px 0 0; color:var(--dim); }
+.overview-metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:16px; }
+.overview-metric { min-height:110px; padding:16px; border:1px solid var(--line-soft); border-radius:var(--radius-sm); background:var(--panel-2); }
+.overview-metric p,.learning-metrics p,.policy-gain p { margin:0 0 8px; color:var(--muted); font-size:12px; }
+.overview-metric strong,.flow-stage>strong,.learning-metrics strong,.policy-gain strong,.success-score b,.signal b { font-family:var(--mono); font-weight:500; font-variant-numeric:tabular-nums; letter-spacing:-.3px; }
+.overview-metric strong { display:block; margin-bottom:6px; font-size:24px; }
+.overview-metric span,.flow-stage>span,.learning-metrics span { color:var(--dim); font-size:11.5px; line-height:1.45; }
+.overview-metric-intake strong { color:var(--blue); }
+.overview-metric-urgent strong { color:var(--amber); }
+.overview-metric-aging strong { color:var(--muted); }
+.flow-track { display:flex; align-items:stretch; gap:8px; margin-top:16px; }
+.flow-stage { position:relative; display:flex; flex:1 1 0; min-width:0; flex-direction:column; padding:16px; border:1px solid var(--line); border-top-width:2px; border-radius:var(--radius-sm); background:var(--panel-2); }
+.flow-stage h3 { margin:14px 0 6px; font-size:13px; font-weight:600; }
+.flow-index { margin:0; color:var(--dim); }
+.flow-stage>strong { display:block; color:var(--text); font-size:26px; }
+.flow-stage>span { display:block; min-height:30px; margin-top:6px; }
+.flow-stage-backlog { border-top-color:var(--dim); }
+.flow-stage-planner { border-top-color:var(--blue); }
+.flow-stage-coder { border-top-color:var(--violet); }
+.flow-stage-reviewer { border-top-color:var(--amber); }
+.flow-stage-resolved { border-top-color:var(--mint); background:var(--mint-soft); }
+.flow-stage-resolved>strong { color:var(--mint); }
+.flow-arrow { display:grid; align-self:center; flex:none; width:14px; place-items:center; color:var(--dim); font-size:16px; }
+.success-score { display:grid; gap:2px; margin-top:auto; padding-top:14px; }
+.success-score b { color:var(--mint); font-size:17px; }
+.success-score em { color:var(--muted); font-style:normal; }
+.overview-lower { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(300px,.9fr); gap:12px; }
+.overview-lower>.panel { margin-top:12px; }
+.queue-list { margin-top:12px; }
+.queue-row { display:grid; grid-template-columns:minmax(0,1fr) 72px 44px 72px; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line-soft); color:inherit; text-decoration:none; }
+.queue-row:last-child { border-bottom:0; }
+a.queue-row:hover h3 { text-decoration:underline; }
+.queue-ticket { display:flex; min-width:0; align-items:flex-start; gap:10px; }
+.queue-id { flex:none; color:var(--blue); }
+.queue-ticket h3 { overflow:hidden; margin:0 0 4px; font-size:13px; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
+.queue-ticket p { overflow:hidden; margin:0; color:var(--dim); font-family:var(--mono); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.priority { display:inline-flex; justify-content:center; padding:3px 6px; border-radius:4px; }
+.priority-critical { color:var(--danger); background:var(--danger-soft); }
+.priority-high { color:var(--amber); background:var(--amber-soft); }
+.queue-age { color:var(--dim); text-align:right; }
+.queue-stage { color:var(--text); text-align:right; }
+.learning-evidence { display:flex; flex-direction:column; }
+.learning-mark { display:grid; width:28px; height:28px; place-items:center; border:1px solid var(--line); border-radius:50%; color:var(--mint); background:var(--mint-soft); }
+.learning-metrics { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:16px; }
+.learning-metrics article { padding:13px; border:1px solid var(--line-soft); border-radius:var(--radius-sm); background:var(--panel-2); }
+.learning-metrics strong { display:block; margin-bottom:6px; color:var(--mint); font-size:22px; }
+.policy-gain { margin:12px 0; padding:14px; border-left:2px solid var(--mint); border-radius:0 var(--radius-sm) var(--radius-sm) 0; background:var(--mint-soft); }
+.policy-gain h3 { margin:0 0 8px; font-size:13px; font-weight:600; }
+.policy-gain div { display:flex; align-items:baseline; gap:6px; }
+.policy-gain strong { color:var(--mint); font-size:17px; }
+.policy-gain span { margin-right:8px; color:var(--muted); }
+.policy-gain small { display:block; margin-top:6px; color:var(--muted); }
+.learning-note { margin:0 0 14px; color:var(--muted); font-size:12px; line-height:1.55; }
+.learning-evidence .text-button { align-self:flex-start; margin-top:auto; }
+@media (max-width:1100px) { .overview-lower { grid-template-columns:1fr; } .overview-metrics { grid-template-columns:repeat(2,1fr); } .flow-track { gap:5px; } .flow-stage { min-width:118px; padding:13px; } .flow-stage h3 { margin-top:12px; font-size:12px; } .flow-stage>strong { font-size:22px; } }
+@media (max-width:520px) { .overview-metrics { grid-template-columns:1fr 1fr; gap:8px; } .flow-track { overflow:auto; margin-right:-2px; padding-bottom:6px; } .flow-stage { min-width:145px; } .queue-row { grid-template-columns:minmax(0,1fr) 60px 36px; gap:8px; } .queue-stage { display:none; } .queue-ticket h3 { white-space:normal; line-height:1.35; } }

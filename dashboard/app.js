@@ -23,7 +23,7 @@ const theme = {
 };
 theme.apply(theme.get());
 const state = {
-  view: "home", // home | episodes | episode | experiments | experiment | sandboxes
+  view: "home", // home | overview | episodes | episode | experiments | experiment | sandboxes
   tab: "overview", // episode sub-page: overview | traces | logs | sandboxes | diff
   xtab: "results", // experiment sub-page: results | episodes
   episodesFilter: "live", // live | all
@@ -55,12 +55,14 @@ const cache = {
   episode: null,
   experiments: [],
   experiment: null,
+  overview: null,
   updated_at: null,
   error: null,
 };
 const svg = (d, extra = "") =>
   `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"${extra}>${d}</svg>`;
 const icons = {
+  overview: svg('<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>'),
   home: svg(
     '<path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/>',
   ),
@@ -144,7 +146,7 @@ const stateLabel = {
 };
 
 // ---- routing (hash) ----------------------------------------------------------
-// #/ · #/episodes · #/episodes/<id|live>/<overview|traces|logs|sandboxes|diff>
+// #/ · #/overview · #/episodes · #/episodes/<id|live>/<overview|traces|logs|sandboxes|diff>
 // #/experiments · #/experiments/<id|all>/<results|episodes> · #/sandboxes
 const EP_TABS = ["overview", "traces", "logs", "sandboxes", "diff"];
 function readHash() {
@@ -166,6 +168,7 @@ function readHash() {
     state.xtab = b === "episodes" ? "episodes" : "results";
   } else if (view === "experiments") state.view = "experiments";
   else if (view === "sandboxes") state.view = "sandboxes";
+  else if (view === "overview") state.view = "overview";
   else state.view = "home";
 }
 function hashFor(st = state) {
@@ -271,6 +274,8 @@ async function refresh(opts = {}) {
     }
     if (["sandboxes", "home", "episode"].includes(state.view))
       cache.sandboxes = await get("/api/sandboxes");
+    if (state.view === "overview")
+      cache.overview = (await get("/api/overview")).overview;
     cache.error = null;
   } catch (err) {
     cache.error = err.message;
@@ -284,6 +289,7 @@ async function refresh(opts = {}) {
     cache.episode,
     cache.experiments,
     cache.experiment,
+    cache.overview,
     cache.sandboxes?.sandboxes,
     cache.error,
   ]);
@@ -593,6 +599,38 @@ function homeView() {
   <section class="panel episodes-panel"><div class="section-heading"><div><p class="eyebrow">Experiments</p><h2>Recent benchmarks</h2></div><a class="text-button" href="#/experiments">All experiments →</a></div><div class="episode-list">${exps.map(expRow).join("") || `<p class="empty">No experiments yet.</p>`}</div></section></div>
   ${sandboxPanel(true)}</main>`;
 }
+// ---- organisation overview (replay) ----------------------------------------
+function overviewMetric(m) {
+  return `<article class="overview-metric overview-metric-${esc(m.tone)}"><p>${esc(m.label)}</p><strong>${esc(m.value)}</strong><span>${esc(m.note)}</span></article>`;
+}
+function organisationPipeline(p) {
+  const stages = p.stages
+    .map(
+      (st, i) =>
+        `<article class="flow-stage flow-stage-${esc(st.key)}"><p class="flow-index">0${i + 1}</p><h3>${esc(st.label)}</h3><strong>${esc(st.value)}</strong><span>${esc(st.detail)}</span>${st.score ? `<div class="success-score"><b>${esc(st.score.value)}</b><em>${esc(st.score.label)}</em></div>` : ""}</article>${i < p.stages.length - 1 ? '<span class="flow-arrow" aria-hidden="true">→</span>' : ""}`,
+    )
+    .join("");
+  const resolved = p.stages.find((st) => st.key === "resolved");
+  return `<section class="organisation-pipeline panel"><div class="section-heading"><div><p class="eyebrow">Autonomous delivery pipeline</p><h2>From ticket intake to verified resolution</h2></div><div class="pipeline-utilities">${resolved?.score ? `<span class="pipeline-success">${esc(resolved.score.value)} ${esc(resolved.score.label)}</span>` : ""}<span class="badge badge-replay">Replay data</span></div></div><p class="section-context">${esc(p.period)}</p><div class="flow-track">${stages}</div></section>`;
+}
+function priorityQueue(tickets) {
+  const row = (t) => {
+    const body = `<div class="queue-ticket"><span class="queue-id">${esc(t.id)}</span><div><h3>${esc(t.title)}</h3><p>${esc(t.repository)}</p></div></div><span class="priority priority-${esc(t.priority.toLowerCase())}">${esc(t.priority)}</span><span class="queue-age">${esc(t.age)}</span><span class="queue-stage">${esc(t.stage)}</span>`;
+    return t.episode_id
+      ? `<a class="queue-row" href="#/episodes/${encodeURIComponent(t.episode_id)}/overview">${body}</a>`
+      : `<article class="queue-row">${body}</article>`;
+  };
+  return `<section class="priority-queue panel"><div class="section-heading"><div><p class="eyebrow">Priority queue</p><h2>Work needing attention now</h2></div><span class="queue-count">${tickets.length} highlighted</span></div><div class="queue-list">${tickets.map(row).join("")}</div></section>`;
+}
+function learningEvidence(l) {
+  return `<section class="learning-evidence panel"><div class="section-heading"><div><p class="eyebrow">Reinforcement evidence</p><h2>Each outcome strengthens the next decision</h2></div><span class="learning-mark">↗</span></div><p class="section-context">${esc(l.period)}</p><div class="learning-metrics">${l.metrics.map((m) => `<article><p>${esc(m.label)}</p><strong>${esc(m.value)}</strong><span>${esc(m.note)}</span></article>`).join("")}</div><div class="policy-gain"><p>Measured policy gain</p><h3>${esc(l.policy.name)}</h3><div><strong>${esc(l.policy.success_gain)}</strong><span>success</span><strong>${esc(l.policy.reward_gain)}</strong><span>reward</span></div><small>${esc(l.policy.baseline)}</small></div><p class="learning-note">${esc(l.note)}</p><a class="text-button" href="#/experiments/all/results">Inspect policy evidence →</a></section>`;
+}
+function overviewView() {
+  const o = cache.overview;
+  if (!o) return `<main class="page overview-page">${header("Overview", "Autonomous engineering capacity, visible.", "Loading replay…")}${notice()}</main>`;
+  const action = `<div class="header-actions"><a class="primary-button" href="#/episodes/live/overview">Open active episode <span>${icons.arrow}</span></a></div>`;
+  return `<main class="page overview-page">${header(`Organisation-wide operations · ${esc(o.snapshot_label)}`, "Autonomous engineering capacity, visible.", "A deterministic replay of an engineering organisation where every ticket, agent handoff, and evaluated outcome remains inspectable.", action)}${notice()}${organisationPipeline(o.pipeline)}<section class="backlog-health panel"><div class="section-heading"><div><p class="eyebrow">Backlog health</p><h2>Demand is high. The work is moving.</h2></div><span class="backlog-period">${esc(o.backlog.period)}</span></div><div class="overview-metrics">${o.backlog.metrics.map(overviewMetric).join("")}</div></section><section class="overview-lower">${priorityQueue(o.priority_queue)}${learningEvidence(o.learning)}</section></main>`;
+}
 function episodesView() {
   const base = visibleEpisodes();
   const all =
@@ -670,6 +708,7 @@ function sandboxesView() {
 function render() {
   const views = {
     home: homeView,
+    overview: overviewView,
     episodes: episodesView,
     episode: episodeView,
     experiments: experimentsView,
@@ -697,7 +736,7 @@ function render() {
     (k === "experiments" && state.view === "experiment");
   const nav = (k, l, c) =>
     `<a class="nav-item ${active(k) ? "is-active" : ""}" href="#/${k === "home" ? "" : k}"><span>${icons[k]}</span>${l}${c ? `<em class="nav-count">${c}</em>` : ""}</a>`;
-  app.innerHTML = `<div class="app-shell"><aside class="sidebar"><a class="brand" href="#/"><span>${icons.brand}</span><strong>Agent Atlas</strong></a><div class="workspace"><span class="workspace-dot ${running ? "" : "idle"}"></span><span>${esc(cache.config?.repo ?? "…")}</span></div><nav>${nav("home", "Home")}${nav("episodes", "Episodes", running)}${nav("experiments", "Experiments")}<p class="nav-section">Infrastructure</p>${nav("sandboxes", "Sandboxes", liveSb)}</nav><div class="sidebar-footer"><span class="data-chip"><i></i> Live data</span><p>schema 1.1 · ${esc(cache.config?.model ?? "")}</p>${cache.error ? `<p class="danger">${esc(cache.error)}</p>` : ""}</div></aside><section class="content"><div class="topbar"><span>${crumbs()}</span><span class="topbar-right"><span class="muted">updated ${cache.updated_at ? ago(cache.updated_at) : "—"}</span><button class="icon-button" data-refresh>${icons.spin} Refresh</button><button class="icon-button" data-theme-toggle title="Toggle theme">${document.documentElement.dataset.theme === "dark" ? icons.sun : icons.moon}</button></span></div>${views[state.view]()}</section></div>`;
+  app.innerHTML = `<div class="app-shell"><aside class="sidebar"><a class="brand" href="#/"><span>${icons.brand}</span><strong>Agent Atlas</strong></a><div class="workspace"><span class="workspace-dot ${running ? "" : "idle"}"></span><span>${esc(cache.config?.repo ?? "…")}</span></div><nav>${nav("home", "Home")}${nav("overview", "Overview")}${nav("episodes", "Episodes", running)}${nav("experiments", "Experiments")}<p class="nav-section">Infrastructure</p>${nav("sandboxes", "Sandboxes", liveSb)}</nav><div class="sidebar-footer"><span class="data-chip"><i></i> Live data</span><p>schema 1.1 · ${esc(cache.config?.model ?? "")}</p>${cache.error ? `<p class="danger">${esc(cache.error)}</p>` : ""}</div></aside><section class="content"><div class="topbar"><span>${crumbs()}</span><span class="topbar-right"><span class="muted">updated ${cache.updated_at ? ago(cache.updated_at) : "—"}</span><button class="icon-button" data-refresh>${icons.spin} Refresh</button><button class="icon-button" data-theme-toggle title="Toggle theme">${document.documentElement.dataset.theme === "dark" ? icons.sun : icons.moon}</button></span></div>${views[state.view]()}</section></div>`;
   window.scrollTo(0, scroll);
   document.querySelectorAll("details[data-key]").forEach((d) => {
     if (open.has(d.dataset.key)) d.open = true;

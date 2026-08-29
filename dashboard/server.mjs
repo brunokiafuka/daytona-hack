@@ -5,6 +5,7 @@
  *   GET  /api/episodes/:id        full episode detail (status, trace, logs, evidence)
  *   GET  /api/experiments         experiment runs (saved files + live experiment ids)
  *   GET  /api/experiments/:id     aggregated policy/task comparison (id "all" = every episode)
+ *   GET  /api/overview            organisation replay overview (schema 1.1 `overview`)
  *   GET  /api/tasks               imported benchmark tasks
  *   GET  /api/issues?repo=o/r     open GitHub issues (via gh)
  *   GET  /api/sandboxes           live Daytona sandboxes (labels tell which episode/phase owns them)
@@ -25,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import { POLICIES, benchmark, episodeDetail, experimentDetail, listEpisodes, listExperiments, listTasks } from "./adapter.mjs";
+import { POLICIES, benchmark, overview, episodeDetail, experimentDetail, listEpisodes, listExperiments, listTasks } from "./adapter.mjs";
 
 const run = promisify(execFile);
 const root = fileURLToPath(new URL(".", import.meta.url));
@@ -142,6 +143,7 @@ async function api(req, res, url) {
     if (path === "/experiments") return json(res, 200, { schema_version: "1.1", updated_at: now, experiments: listExperiments() });
     if (path.startsWith("/experiments/")) { const id = decodeURIComponent(path.slice(13)); const d = id === "all" ? benchmark(url.searchParams.get("demo") === "1") : experimentDetail(id); return d ? json(res, 200, { updated_at: now, experiment: d }) : json(res, 404, { error: "experiment not found" }); }
     if (path === "/tasks") return json(res, 200, { tasks: listTasks() });
+    if (path === "/overview") return json(res, 200, { schema_version: "1.1", updated_at: now, overview: overview() });
     if (path === "/issues") { try { return json(res, 200, { repo: url.searchParams.get("repo") ?? DEFAULT_REPO, issues: await issues(url.searchParams.get("repo") ?? DEFAULT_REPO) }); } catch (e) { return json(res, 502, { error: e.message, issues: [] }); } }
     if (path === "/sandboxes") return json(res, 200, { updated_at: now, ...(await sandboxes()) });
     if (path === "/runs") { for (const r of runs.values()) if (r.record.state === "running" && !r.child && !alive(r.record.pid)) { r.record.state = "done"; r.record.finished_at = now; persist(r.record); } return json(res, 200, { runs: [...runs.values()].map((r) => r.record).sort((a, b) => b.started_at.localeCompare(a.started_at)) }); }
