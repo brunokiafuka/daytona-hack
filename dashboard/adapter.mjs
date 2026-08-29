@@ -196,6 +196,52 @@ function trace(e) {
   });
 }
 
+/**
+ * Per-sandbox terminal transcript: orchestrator commands (log.jsonl lines that
+ * carry output) merged with the agent's own bash/write actions (events.jsonl)
+ * for the phase that owns the sandbox, ordered by time. Read-only by design —
+ * the agent drives the machine; a human typing would corrupt the trajectory.
+ */
+function terminals(e, sandboxes) {
+  const phaseOf = {};
+  for (const [phase, ids] of Object.entries(sandboxes)) ids.forEach((id, i) => (phaseOf[id] = { phase, attempt: i }));
+  const out = {};
+  for (const [id, { phase, attempt }] of Object.entries(phaseOf)) {
+    const rows = [];
+    // Orchestrator lines are scoped to a sandbox by id mention (boot/release) or by phase + attempt window.
+    const byPhase = e.logs.filter((l) => l.phase === phase || l.message.includes(id));
+    // Split a phase's log lines into attempt windows on each "booted" marker.
+    let window = -1;
+    for (const l of byPhase) {
+      if (/booted/.test(l.message)) window++;
+      if (window !== attempt && !l.message.includes(id)) continue;
+      const m = /^(.*?): (.*)$/s.exec(l.message);
+      if (l.output !== undefined || l.exit_code !== undefined) {
+        rows.push({ t: l.timestamp, source: "orchestrator", label: m?.[1] ?? l.phase, cmd: m?.[2] ?? l.message, output: l.output ?? "", exit_code: l.exit_code, duration_ms: l.duration_ms });
+      } else {
+        rows.push({ t: l.timestamp, source: "note", cmd: l.message, level: l.level });
+      }
+    }
+    const agentSteps = e.events.filter((ev) => ev.agent === phase);
+    // Attempt windows for the agent: retries restart the step counter.
+    let w = -1, last = Infinity;
+    for (const ev of agentSteps) {
+      if (ev.step <= last) w++;
+      last = ev.step;
+      if (w !== attempt) continue;
+      const tool = ev.action?.tool, inp = ev.action?.input ?? {};
+      const obs = ev.observation ?? {};
+      if (tool === "bash") rows.push({ t: ev.timestamp, source: "agent", cmd: inp.command ?? "", output: obs.output ?? "", exit_code: obs.exit_code, duration_ms: ev.duration_ms, step: ev.step });
+      else if (tool === "write_file") rows.push({ t: ev.timestamp, source: "agent", cmd: `write ${inp.path ?? ""}`, output: obs.output ?? "", exit_code: obs.exit_code ?? 0, duration_ms: ev.duration_ms, step: ev.step, meta: `${String(inp.content ?? "").split("\n").length} lines` });
+      else if (tool === "read_file") rows.push({ t: ev.timestamp, source: "agent", cmd: `cat ${inp.path ?? ""}`, output: obs.output ?? "", exit_code: obs.exit_code ?? 0, duration_ms: ev.duration_ms, step: ev.step });
+      else if (tool) rows.push({ t: ev.timestamp, source: "agent", cmd: `${tool} ${JSON.stringify(inp).slice(0, 120)}`, output: obs.output ?? "", exit_code: obs.exit_code ?? 0, duration_ms: ev.duration_ms, step: ev.step });
+    }
+    rows.sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+    out[id] = rows.map((r, i) => ({ id: `${id}-${i}`, ...r, time: clock(r.t), output: (r.output ?? "").slice(-6000) }));
+  }
+  return out;
+}
+
 function diffSummary(diff) {
   const files = [];
   let additions = 0, deletions = 0, current;
@@ -263,6 +309,7 @@ export function episodeDetail(id) {
     diff: diffSummary(e.diff ?? ""),
     trace: tr,
     logs: e.logs.map((l, i) => ({ id: `log-${i}`, ...l, time: clock(l.timestamp) })),
+    terminals: terminals(e, s.sandboxes ?? {}),
     usage: e.result?.usage ?? e.status?.usage ?? [],
     error: e.result?.error,
     attempt: e.status?.attempt ?? 0,

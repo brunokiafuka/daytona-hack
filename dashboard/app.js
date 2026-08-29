@@ -34,6 +34,8 @@ const state = {
   traceFilter: "all",
   selectedEvent: null,
   logFilter: "all",
+  terminal: null, // sandbox id to isolate in the episode terminal (null = whole episode)
+  termFollow: true, // auto-scroll terminals to the newest command
   diffOpen: false,
   trigger: {
     issue: null,
@@ -75,6 +77,8 @@ const icons = {
   sandboxes: svg(
     '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
   ),
+  terminal: svg('<path d="M4 17l6-5-6-5"/><path d="M12 19h8"/>'),
+  copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>'),
   read: svg(
     '<path d="M4 4h10l6 6v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M14 4v6h6"/>',
   ),
@@ -538,16 +542,51 @@ function episodeSandboxes(ep) {
   const live = new Map(
     (cache.sandboxes?.sandboxes ?? []).map((s) => [s.id, s]),
   );
-  const rows = Object.entries(ep.sandboxes ?? {}).flatMap(([phase, ids]) =>
+  const boxes = Object.entries(ep.sandboxes ?? {}).flatMap(([phase, ids]) =>
     ids.map((id, i) => {
       const s = live.get(id);
       const logs = ep.logs.filter((l) => l.message.includes(id));
       const booted = logs.find((l) => /booted/.test(l.message)),
         released = logs.find((l) => /released/.test(l.message));
-      return `<div class="sandbox-row ${s?.state ?? "released"}"><span class="sb-dot"></span><code title="${id}">${id.slice(0, 13)}</code><span class="sb-state">${s?.state ?? (released ? "released" : "gone")}</span><span class="sb-labels"><b class="log-phase ${phase}">${phase}</b>${ids.length > 1 ? `<em>attempt ${i + 1}</em>` : ""}<em>${booted ? `booted ${booted.time}` : ""}${released ? ` · released ${released.time}` : ""}</em></span><span class="muted">${s?.cpu ? `${s.cpu} vCPU · ${s.memory} GB` : ""}</span><span class="muted">${s ? ago(s.created_at) : ""}</span></div>`;
+      const active = s?.state === "started" || (ep.state === "running" && !released && !s);
+      const st = s?.state ?? (released ? "released" : active ? "active" : "gone");
+      return { id, phase, attempt: i, count: ids.length, s, st, booted, released, active };
     }),
   );
-  return `<section class="panel sandbox-panel"><div class="section-heading"><div><p class="eyebrow">Daytona</p><h2>Sandboxes used by this episode</h2></div><span class="muted">one machine per phase · handoff by plan JSON and git patch</span></div>${rows.join("") || `<p class="empty">No sandbox booted yet.</p>`}</section>${logsPanel(ep, true)}`;
+  if (!boxes.length)
+    return `<section class="panel sandbox-panel"><div class="section-heading"><div><p class="eyebrow">Daytona</p><h2>Sandboxes used by this episode</h2></div><span class="muted">one machine per phase · handoff by plan JSON and git patch</span></div><p class="empty">No sandbox booted yet.</p></section>`;
+  const selected = boxes.find((b) => b.id === state.terminal) ?? null;
+  const rows = boxes
+    .map(
+      (b) =>
+        `<button type="button" class="sandbox-row ${b.st} ${b === selected ? "is-selected" : ""}" data-terminal="${b.id}" title="${b === selected ? "Show whole episode" : "Isolate this sandbox in the terminal"}"><span class="sb-dot"></span><code title="${b.id}">${b.id.slice(0, 13)}</code><span class="sb-state">${b.st}</span><span class="sb-labels"><b class="log-phase ${b.phase}">${b.phase}</b>${b.count > 1 ? `<em>attempt ${b.attempt + 1}</em>` : ""}<em>${b.booted ? `booted ${b.booted.time}` : ""}${b.released ? ` · released ${b.released.time}` : ""}</em></span><span class="muted">${b.s?.cpu ? `${b.s.cpu} vCPU · ${b.s.memory} GB` : ""}</span><span class="muted">${(ep.terminals?.[b.id] ?? []).filter((r) => r.source !== "note").length} cmds</span></button>`,
+    )
+    .join("");
+  return `<section class="panel sandbox-panel"><div class="section-heading"><div><p class="eyebrow">Daytona</p><h2>Sandboxes used by this episode</h2></div><span class="muted">one machine per phase · handoff by plan JSON and git patch</span></div><div class="sandbox-list">${rows}</div></section>${terminalPanel(ep, boxes, selected)}`;
+}
+function terminalPanel(ep, boxes, only) {
+  const shown = only ? [only] : boxes;
+  const rows = shown
+    .flatMap((b) => (ep.terminals?.[b.id] ?? []).map((r) => ({ ...r, box: b })))
+    .sort((x, y) => Date.parse(x.t) - Date.parse(y.t));
+  let lastBox = null;
+  const lines = rows
+    .map((r, i) => {
+      const sep = r.box !== lastBox ? `<div class="term-sep"><span class="log-phase ${r.box.phase}">${r.box.phase}</span><code>${r.box.id.slice(0, 13)}</code>${r.box.count > 1 ? `<em>attempt ${r.box.attempt + 1}</em>` : ""}</div>` : "";
+      lastBox = r.box;
+      if (r.source === "note")
+        return `${sep}<div class="term-note ${r.level ?? ""}"><span class="term-time">${r.time}</span># ${esc(r.cmd)}</div>`;
+      const failed = r.exit_code !== undefined && r.exit_code !== 0;
+      const open = r.output && (failed || i >= rows.length - 3);
+      return `${sep}<details class="term-cmd ${failed ? "failed" : ""}" data-key="t-${r.id}" ${open ? "open" : ""} ${r.output ? "" : "data-empty"}><summary><span class="term-time">${r.time}</span><span class="term-prompt ${r.source}">${r.source === "agent" ? `${r.box.phase} $` : "~ $"}</span><span class="term-cmdline">${esc(r.cmd)}</span>${r.meta ? `<span class="term-meta">${esc(r.meta)}</span>` : ""}${r.exit_code !== undefined ? `<span class="term-exit ${failed ? "failed" : "ok"}">${failed ? `exit ${r.exit_code}` : "✓"}</span>` : ""}${r.duration_ms ? `<span class="term-dur">${(r.duration_ms / 1000).toFixed(1)}s</span>` : ""}</summary>${r.output ? `<pre>${esc(r.output)}</pre>` : ""}</details>`;
+    })
+    .join("");
+  const cmds = rows.filter((r) => r.source !== "note");
+  const failed = cmds.filter((r) => r.exit_code !== undefined && r.exit_code !== 0).length;
+  const live = shown.find((b) => b.active);
+  const transcript = cmds.map((r) => `[${r.box.phase}] $ ${r.cmd}\n${r.output}`).join("\n\n");
+  const status = live ? `live · ${live.phase} is driving ${live.id.slice(0, 13)}` : ep.state === "running" ? "waiting for the next sandbox…" : `${ep.state} · ${shown.length} machine${shown.length === 1 ? "" : "s"} · transcript`;
+  return `<section class="panel terminal-panel"><div class="section-heading"><div><p class="eyebrow">Terminal · read-only</p><h2>${only ? `${esc(only.phase)} sandbox <code>${only.id.slice(0, 13)}</code>` : "Episode session"}</h2></div><span class="term-tools"><span class="muted">${cmds.length} commands · ${failed} failed</span>${only ? `<button class="filter" data-terminal="${only.id}" type="button">Show all</button>` : ""}<button class="filter ${state.termFollow ? "selected" : ""}" data-term-follow type="button">Follow</button><button class="icon-button" data-term-copy type="button" title="Copy transcript">${icons.copy} Copy</button></span></div><div class="terminal"><div class="term-head"><span>${icons.terminal}</span> ${status}</div><div class="term-body">${lines || `<div class="term-note">Waiting for the first command…</div>`}${live ? `<div class="term-cursor"><span class="term-prompt agent">${live.phase} $</span><i></i></div>` : ""}</div><textarea class="term-clip" aria-hidden="true" tabindex="-1">${esc(transcript)}</textarea></div></section>`;
 }
 function episodeView() {
   const ep = cache.episode;
@@ -726,8 +765,13 @@ function render() {
   }
   pendingRender = false;
   const scroll = window.scrollY;
+  const termEl = document.querySelector(".term-body");
+  const termScroll = termEl ? termEl.scrollTop : null;
   const open = new Set(
     [...document.querySelectorAll("details[open]")].map((d) => d.dataset.key),
+  );
+  const seen = new Set(
+    [...document.querySelectorAll("details[data-key]")].map((d) => d.dataset.key),
   );
   writeHash();
   const active = (k) =>
@@ -740,7 +784,14 @@ function render() {
   window.scrollTo(0, scroll);
   document.querySelectorAll("details[data-key]").forEach((d) => {
     if (open.has(d.dataset.key)) d.open = true;
+    else if (seen.has(d.dataset.key) && d.dataset.key.startsWith("t-")) d.open = false; // keep user-collapsed commands collapsed; new ones use their default
   });
+  const term = document.querySelector(".term-body");
+  if (term) {
+    const to = () => (term.scrollTop = state.termFollow || termScroll === null ? term.scrollHeight : termScroll);
+    to();
+    requestAnimationFrame(to); // fonts/pre blocks can settle after first paint
+  }
   bind();
 }
 let pendingRender = false;
@@ -767,6 +818,21 @@ function bind() {
   on("[data-tab]", "click", (e) =>
     go({ view: "episode", tab: e.currentTarget.dataset.tab }),
   );
+  on("[data-terminal]", "click", (e) => {
+    const id = e.currentTarget.dataset.terminal;
+    state.terminal = state.terminal === id ? null : id;
+    render();
+  });
+  on("[data-term-follow]", "click", () => {
+    state.termFollow = !state.termFollow;
+    render();
+  });
+  on("[data-term-copy]", "click", async (e) => {
+    const ta = document.querySelector(".term-clip");
+    try { await navigator.clipboard.writeText(ta?.value ?? ""); } catch { ta?.select(); document.execCommand("copy"); }
+    e.currentTarget.textContent = "Copied";
+    setTimeout(() => render(), 1200);
+  });
   on("[data-demo-toggle]", "click", () => {
     state.showDemo = !state.showDemo;
     refresh({ force: true });
