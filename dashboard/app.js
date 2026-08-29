@@ -652,6 +652,47 @@ function organisationPipeline(p) {
   const resolved = p.stages.find((st) => st.key === "resolved");
   return `<section class="organisation-pipeline panel"><div class="section-heading"><div><p class="eyebrow">Autonomous delivery pipeline</p><h2>From ticket intake to verified resolution</h2></div><div class="pipeline-utilities">${resolved?.score ? `<span class="pipeline-success">${esc(resolved.score.value)} ${esc(resolved.score.label)}</span>` : ""}<span class="badge badge-replay">Replay data</span></div></div><p class="section-context">${esc(p.period)}</p><div class="flow-track">${stages}</div></section>`;
 }
+function overviewTicketFlow(tickets) {
+  const queue = tickets.slice(0, 5);
+  const cards = queue.map((ticket) => `<div class="overview-queue-card" data-flow-ticket data-ticket-id="${esc(ticket.id)}" data-ticket-title="${esc(ticket.title)}"><b>${esc(ticket.id)}</b><span>${esc(ticket.title)}</span></div>`).join("");
+  const ticketDock = '<div class="overview-ticket-dock" aria-label="Ticket landing area"></div>';
+  return `<section class="overview-ticket-flow panel"><div class="section-heading"><div><p class="eyebrow">Autonomous delivery flow</p><h2>One ticket. Three accountable handoffs.</h2></div><span class="badge badge-replay">Replay</span></div><div class="overview-flow-viewport"><div class="overview-flow-board" data-overview-flow><div class="overview-flow-grid"><section class="overview-flow-source"><p>Ticket source</p><h3>Backlog</h3><span>Prioritised GitHub issues</span><div class="overview-queue">${cards}</div></section><section class="overview-flow-sandbox"><div class="overview-sandbox-label"><span>Daytona sandbox</span><em>One ticket at a time</em></div><div class="overview-stage-grid"><article class="overview-stage planner"><p>01 · Planner</p><strong>Scope the change</strong><small>Ticket → plan</small>${ticketDock}</article><article class="overview-stage coder"><p>02 · Coder</p><strong>Patch, test, fix</strong><small>Plan → tested diff</small>${ticketDock}</article><article class="overview-stage reviewer"><p>03 · Reviewer</p><strong>Validate independently</strong><small>Patch + evidence → approval</small>${ticketDock}</article></div></section><section class="overview-flow-results"><p>Verified output</p><h3>Results</h3><span>Evaluated episodes</span><div class="overview-result-stack"><b>Tests passed</b><b>Review approved</b><b>Reward recorded</b></div></section></div><div class="overview-ticket-layer" aria-label="Ticket moving through the delivery flow"></div></div></div><div class="overview-flow-footer"><span>Each handoff preserves the issue, patch, test output, review, and evaluation evidence.</span><b>Trajectory retained</b></div></section>`;
+}
+function startOverviewTicketFlow() {
+  document.querySelectorAll("[data-overview-flow]").forEach((board) => {
+    const colours = ["#73a7ff", "#b59cff", "#ffc76b", "#5fe0b2"];
+    const queue = [...board.querySelectorAll("[data-flow-ticket]")].map((ticket, index) => [ticket.dataset.ticketId, ticket.dataset.ticketTitle, colours[index % colours.length]]);
+    const layer = board.querySelector(".overview-ticket-layer");
+    const backlog = board.querySelector(".overview-queue");
+    if (!queue.length || !layer || !backlog) return;
+    let next = 0;
+    const advanceBacklog = () => {
+      const released = backlog.firstElementChild;
+      if (!released) return;
+      released.classList.add("is-releasing");
+      window.setTimeout(() => {
+        if (!board.isConnected) return;
+        backlog.append(released);
+        released.classList.remove("is-releasing");
+        [...backlog.children].forEach((card, index) => {
+          card.classList.remove("is-shifting");
+          card.style.setProperty("--queue-delay", `${index * 45}ms`);
+          void card.offsetWidth;
+          card.classList.add("is-shifting");
+        });
+      }, 220);
+    };
+    const launch = () => {
+      if (!board.isConnected) return;
+      const [id, title, colour] = queue[next % queue.length];
+      next += 1;
+      layer.innerHTML = `<div class="overview-moving-ticket" style="--ticket-colour:${colour}"><strong>${id}</strong><span>${title}</span></div>`;
+      advanceBacklog();
+      window.setTimeout(launch, 5900);
+    };
+    launch();
+  });
+}
 function priorityQueue(tickets) {
   const row = (t) => {
     const body = `<div class="queue-ticket"><span class="queue-id">${esc(t.id)}</span><div><h3>${esc(t.title)}</h3><p>${esc(t.repository)}</p></div></div><span class="priority priority-${esc(t.priority.toLowerCase())}">${esc(t.priority)}</span><span class="queue-age">${esc(t.age)}</span><span class="queue-stage">${esc(t.stage)}</span>`;
@@ -681,7 +722,7 @@ function overviewView() {
   const o = cache.overview;
   if (!o) return `<main class="page overview-page">${header("Overview", "Autonomous engineering capacity, visible.", "Loading replay…")}${notice()}</main>`;
   const action = `<div class="header-actions"><a class="primary-button" href="#/episodes/live/overview">Open active episode <span>${icons.arrow}</span></a></div>`;
-  return `<main class="page overview-page">${header(`Organisation-wide operations · ${esc(o.snapshot_label)}`, "Autonomous engineering capacity, visible.", "A deterministic replay of an engineering organisation where every ticket, agent handoff, and evaluated outcome remains inspectable.", action)}${notice()}${organisationPipeline(o.pipeline)}<section class="backlog-health panel"><div class="section-heading"><div><p class="eyebrow">Backlog health</p><h2>Demand is high. The work is moving.</h2></div><span class="backlog-period">${esc(o.backlog.period)}</span></div><div class="overview-metrics">${o.backlog.metrics.map(overviewMetric).join("")}</div></section><section class="overview-lower">${priorityQueue(o.priority_queue)}${learningEvidence(o.learning)}</section></main>`;
+  return `<main class="page overview-page">${header(`Organisation-wide operations · ${esc(o.snapshot_label)}`, "Autonomous engineering capacity, visible.", "A deterministic replay of an engineering organisation where every ticket, agent handoff, and evaluated outcome remains inspectable.", action)}${notice()}${overviewTicketFlow(o.priority_queue)}${organisationPipeline(o.pipeline)}<section class="backlog-health panel"><div class="section-heading"><div><p class="eyebrow">Backlog health</p><h2>Demand is high. The work is moving.</h2></div><span class="backlog-period">${esc(o.backlog.period)}</span></div><div class="overview-metrics">${o.backlog.metrics.map(overviewMetric).join("")}</div></section><section class="overview-lower">${priorityQueue(o.priority_queue)}${learningEvidence(o.learning)}</section></main>`;
 }
 function episodesView() {
   const base = visibleEpisodes();
@@ -805,6 +846,7 @@ function render() {
     to();
     requestAnimationFrame(to); // fonts/pre blocks can settle after first paint
   }
+  startOverviewTicketFlow();
   bind();
 }
 let pendingRender = false;
