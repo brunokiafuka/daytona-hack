@@ -26,6 +26,7 @@ function policy(key: string) {
 
 function summarize(r: EpisodeResult): string {
   if (r.status === "error") return `ERROR ${r.error}`;
+  if (r.status === "abstained") return `— abstained (confidence ${(r.plan?.confidence ?? 0).toFixed(2)}) ${r.plan?.concerns?.join("; ") ?? ""}`;
   const e = r.eval!;
   return `${e.success ? "✓" : "✗"} reward=${e.reward.toFixed(2)} hidden=${e.hard.hidden_eval_pass} tests=${e.hard.tests_pass} reviewer=${e.soft.reviewer_approved} steps=${e.soft.coder_steps} iters=${e.soft.coder_iterations} tokens=${e.cost.input_tokens + e.cost.output_tokens} ${(e.cost.wall_ms / 1000).toFixed(0)}s`;
 }
@@ -63,12 +64,14 @@ switch (cmd) {
     console.log("\nExperiment Results\n");
     console.log(`${"policy".padEnd(32)} ${"success".padStart(8)} ${"reward".padStart(7)} ${"steps".padStart(6)} ${"tokens".padStart(9)}`);
     for (const p of policies) {
-      const rs = results.filter((r) => r.policy === p.name && r.eval);
+      const all = results.filter((r) => r.policy === p.name);
+      const rs = all.filter((r) => r.eval);
+      const abstained = all.filter((r) => r.status === "abstained").length;
       const n = rs.length;
       const ok = rs.filter((r) => r.eval!.success).length;
       const avg = (f: (r: EpisodeResult) => number) => (n ? rs.reduce((a, r) => a + f(r), 0) / n : 0);
       console.log(
-        `${p.name.padEnd(32)} ${`${ok}/${n}`.padStart(8)} ${avg((r) => r.eval!.reward).toFixed(2).padStart(7)} ${avg((r) => r.eval!.soft.coder_steps).toFixed(0).padStart(6)} ${avg((r) => r.eval!.cost.input_tokens + r.eval!.cost.output_tokens).toFixed(0).padStart(9)}`,
+        `${p.name.padEnd(32)} ${`${ok}/${n}`.padStart(8)} ${avg((r) => r.eval!.reward).toFixed(2).padStart(7)} ${avg((r) => r.eval!.soft.coder_steps).toFixed(0).padStart(6)} ${avg((r) => r.eval!.cost.input_tokens + r.eval!.cost.output_tokens).toFixed(0).padStart(9)}${abstained ? `   (${abstained} abstained)` : ""}`,
       );
     }
     console.log(`\nsaved ${file}`);

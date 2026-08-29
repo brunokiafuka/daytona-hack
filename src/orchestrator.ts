@@ -26,27 +26,30 @@ export interface Policy {
   reviewer: boolean;
   /** Reviewer → Coder retry loop (§5). 0 = reviewer is a pure gate. */
   maxRetries: number;
+  /** Planner confidence below this aborts before any execution sandbox is created. */
+  minConfidence: number;
   effort?: Partial<Record<"planner" | "coder" | "reviewer", Effort>>;
 }
 
 export const POLICIES: Record<string, Policy> = {
-  A: { name: "planner+coder+reviewer", planner: true, reviewer: true, maxRetries: 0 },
-  B: { name: "planner+coder", planner: true, reviewer: false, maxRetries: 0 },
-  C: { name: "coder+reviewer", planner: false, reviewer: true, maxRetries: 0 },
-  D: { name: "planner+coder+reviewer+retry", planner: true, reviewer: true, maxRetries: 2 },
+  A: { name: "planner+coder+reviewer", planner: true, reviewer: true, maxRetries: 0, minConfidence: 0.6 },
+  B: { name: "planner+coder", planner: true, reviewer: false, maxRetries: 0, minConfidence: 0.6 },
+  C: { name: "coder+reviewer", planner: false, reviewer: true, maxRetries: 0, minConfidence: 0 },
+  D: { name: "planner+coder+reviewer+retry", planner: true, reviewer: true, maxRetries: 2, minConfidence: 0.6 },
 };
 
 export interface EpisodeResult {
   episode_id: string;
   task_id: string;
   policy: string;
-  status: "done" | "error";
+  status: "done" | "abstained" | "error";
   error?: string;
   eval?: EpisodeEval;
   diff?: string;
   review?: Review;
   plan?: Plan;
-  sandbox_id?: string;
+  /** One sandbox per phase: planner, coder, reviewer (per attempt). */
+  sandboxes: Partial<Record<"planner" | "coder" | "reviewer", string[]>>;
 }
 
 export type Progress = (phase: string, detail?: string) => void;
@@ -56,76 +59,101 @@ export async function runEpisode(task: Task, policy: Policy, progress: Progress 
   const trajectory = new Trajectory(episodeId);
   const started = Date.now();
   const usage: AgentUsage[] = [];
-  let sandbox: RepoSandbox | undefined;
-  const base: EpisodeResult = { episode_id: episodeId, task_id: task.task_id, policy: policy.name, status: "done" };
+  const base: EpisodeResult = { episode_id: episodeId, task_id: task.task_id, policy: policy.name, status: "done", sandboxes: {} };
+  const live = new Set<RepoSandbox>();
+
+  // Each phase gets its own machine, cloned at the base commit. Phases hand
+  // off through artifacts (plan JSON, git patch), never through shared state.
+  async function boot(phase: "planner" | "coder" | "reviewer"): Promise<RepoSandbox> {
+    progress(phase, "boot sandbox");
+    const sb = await bootRepoSandbox({ episode: episodeId, task: task.task_id, phase });
+    live.add(sb);
+    (base.sandboxes[phase] ??= []).push(sb.id);
+    await sb.clone(task.repository, task.base_commit);
+    if (task.setup_command) {
+      const r = await sb.exec(task.setup_command);
+      if (r.exitCode !== 0) throw new Error(`setup failed in ${phase} sandbox: ${r.output.slice(-500)}`);
+    }
+    return sb;
+  }
+  async function release(sb: RepoSandbox): Promise<void> {
+    live.delete(sb);
+    await sb.terminate().catch(() => {});
+  }
 
   try {
-    progress("sandbox", "booting");
-    sandbox = await bootRepoSandbox({ episode: episodeId, task: task.task_id });
-    base.sandbox_id = sandbox.id;
-    progress("sandbox", `clone ${task.repository}@${task.base_commit.slice(0, 7)}`);
-    await sandbox.clone(task.repository, task.base_commit);
-    if (task.setup_command) {
-      progress("sandbox", "setup");
-      const s = await sandbox.exec(task.setup_command);
-      if (s.exitCode !== 0) throw new Error(`setup failed: ${s.output.slice(-500)}`);
-    }
-
+    // Phase 1 — planner, read-only, then decide whether the issue is worth a coder.
     let plan: Plan | undefined;
     if (policy.planner) {
+      const sb = await boot("planner");
       progress("planner");
-      const p = await runPlanner(task, sandbox, trajectory, policy.effort?.planner);
+      const p = await runPlanner(task, sb, trajectory, policy.effort?.planner);
+      await release(sb);
       plan = p.plan;
       usage.push(p.result.usage);
+      const confidence = plan?.confidence ?? 0;
+      progress("planner", `confidence ${confidence.toFixed(2)} (gate ${policy.minConfidence})`);
+      if (confidence < policy.minConfidence) {
+        const result: EpisodeResult = { ...base, status: "abstained", plan };
+        trajectory.artifact("result", { ...result, wall_ms: Date.now() - started, usage });
+        return result;
+      }
     }
 
+    // Phase 2 — coder gets its own machine; the patch is what leaves it.
+    const coderSb = await boot("coder");
     let review: Review | undefined;
+    let patch = "";
     let attempt = 0;
     while (true) {
       progress("coder", attempt ? `retry ${attempt}` : undefined);
-      const c = await runCoder(task, sandbox, trajectory, { plan, feedback: review, effort: policy.effort?.coder });
+      const c = await runCoder(task, coderSb, trajectory, { plan, feedback: review, effort: policy.effort?.coder });
       usage.push(c.usage);
+      patch = await gitDiff(coderSb);
       if (!policy.reviewer) break;
 
-      const diff = await gitDiff(sandbox);
-      const tests = await sandbox.exec(task.test_command);
+      // Phase 3 — reviewer on a fresh machine with only the patch applied, so it
+      // sees exactly what a PR would contain and nothing the coder left behind.
+      const reviewSb = await boot("reviewer");
+      await applyPatch(reviewSb, patch);
+      const tests = await reviewSb.exec(task.test_command);
       progress("reviewer");
-      const r = await runReviewer(task, sandbox, trajectory, diff, `exit ${tests.exitCode}\n${tests.output.slice(-3000)}`, policy.effort?.reviewer);
+      const r = await runReviewer(task, reviewSb, trajectory, patch, `exit ${tests.exitCode}\n${tests.output.slice(-3000)}`, policy.effort?.reviewer);
+      await release(reviewSb);
       review = r.review;
       usage.push(r.result.usage);
       if (review.verdict === "approve" || attempt >= policy.maxRetries) break;
       attempt++;
     }
 
-    // Freeze: everything below is measurement, the agents no longer act.
+    // Freeze: the coder sandbox stops being acted on and becomes the thing measured.
     progress("eval");
-    const diff = await gitDiff(sandbox);
-    const tests = await sandbox.exec(task.test_command);
-    const hidden = await sandbox.exec(task.evaluation_command);
-    const changed = (await sandbox.exec("git status --porcelain")).output;
+    const tests = await coderSb.exec(task.test_command);
+    const hidden = await coderSb.exec(task.evaluation_command);
+    const changed = (await coderSb.exec("git status --porcelain")).output;
+    await release(coderSb);
     const protectedPaths = task.protected_paths ?? ["test", "tests", "__tests__", "spec"];
     const testsUntouched = !changed.split("\n").some((l) => {
       const p = l.slice(3).trim();
       return protectedPaths.some((pp) => p.startsWith(pp + "/") || p.includes(`/${pp}/`)) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(p) || /(^|\/)test_.*\.py$/.test(p);
     });
-    const coderTestRuns = countTestRuns(trajectory, task.test_command);
 
     const ev = evaluateEpisode({
       task,
       testsPass: tests.exitCode === 0,
       hiddenPass: hidden.exitCode === 0,
       testsUntouched,
-      diff,
+      diff: patch,
       review,
       plan,
       coderSteps: trajectory.stepsFor("coder"),
-      coderTestRuns,
+      coderTestRuns: countTestRuns(trajectory, task.test_command),
       usage,
       wallMs: Date.now() - started,
     });
     trajectory.artifact("eval", ev);
-    trajectory.artifact("diff", { diff });
-    const result: EpisodeResult = { ...base, eval: ev, diff, review, plan };
+    trajectory.artifact("diff", { diff: patch });
+    const result: EpisodeResult = { ...base, eval: ev, diff: patch, review, plan };
     trajectory.artifact("result", result);
     return result;
   } catch (err) {
@@ -133,11 +161,15 @@ export async function runEpisode(task: Task, policy: Policy, progress: Progress 
     trajectory.artifact("result", result);
     return result;
   } finally {
-    if (sandbox) {
-      progress("sandbox", "terminate");
-      await sandbox.terminate().catch(() => {});
-    }
+    for (const sb of live) await release(sb);
   }
+}
+
+async function applyPatch(sandbox: RepoSandbox, patch: string): Promise<void> {
+  if (!patch.trim()) return;
+  await sandbox.writeFile(".agent.patch", patch);
+  const r = await sandbox.exec("git apply --whitespace=nowarn .agent.patch && rm .agent.patch");
+  if (r.exitCode !== 0) throw new Error(`patch did not apply in reviewer sandbox: ${r.output.slice(-500)}`);
 }
 
 async function gitDiff(sandbox: RepoSandbox): Promise<string> {

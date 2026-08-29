@@ -13,7 +13,7 @@ src/
   agents/planner.ts read-only investigation → {diagnosis, files, plan}
   agents/coder.ts   closed loop implement→test→fix; test paths are write-protected
   agents/reviewer.ts read-only gate with a 4-item rubric → approve/reject
-  orchestrator.ts   one episode of one policy on one task; freezes, then measures
+  orchestrator.ts   one episode: planner sandbox → confidence gate → coder sandbox → reviewer sandbox(es) → eval
   eval.ts           hard/soft signals → success (hidden oracle only) + reward
   trajectory.ts     JSONL events + JSON artifacts under .data/episodes/<id>/
   tasks.ts          benchmark task loader (tasks/*.json)
@@ -44,6 +44,10 @@ Outputs land in `.data/episodes/<episode_id>/` (`events.jsonl`, `plan.json`, `re
 
 ## Design decisions worth knowing
 
+- **One sandbox per phase, handed off by artifact.** The planner runs read-only on its own machine and returns a
+  `confidence`; the coder sandbox is only created if it clears the policy's `minConfidence` (otherwise the episode is
+  `abstained` — no execution spend). The reviewer gets a fresh clone with only the coder's patch `git apply`'d, so it
+  reviews exactly what the PR would contain.
 - **Success = hidden `evaluation_command` passes AND no test file was touched.** The visible test command is what the
   coder iterates against; it does not decide success on its own.
 - **Coder cannot write under test paths** (`protected_paths`, plus `*.test.*` / `test_*.py`). Reward otherwise pays for
