@@ -428,8 +428,14 @@ export function listTasks() {
  * "Resolved" stage and the policy gain are re-derived from real evaluated episodes
  * whenever any exist, so the page tells the truth about this installation.
  */
+/** The runner's learning artifact (src/learn.ts → .data/learned.json). Undefined until `pnpm learn` or any episode has run. */
+export function learned() {
+  return readJson(".data/learned.json");
+}
+
 export function overview() {
   const b = benchmark(false);
+  const l = learned();
   const evaluated = b.policies.reduce((a, p) => a + p.evaluated, 0);
   const running = b.episodes.filter((e) => e.state === "running");
   const inPhase = (phase) => running.filter((e) => e.phase === phase).length;
@@ -473,10 +479,16 @@ export function overview() {
         { label: "Evaluated trajectories", value: live ? evaluated.toLocaleString() : "7,263", note: "Tool actions, observations, and outcomes retained" },
         { label: "Validated patterns", value: "184", note: "Reusable, evidence-backed engineering strategies" },
       ],
-      policy: best && baseline && best.key !== baseline.key
+      policy: l?.gain
+        ? { name: `Policy ${l.gain.policy}`, success_gain: pp(l.gain.success), reward_gain: `${l.gain.reward >= 0 ? "+" : ""}${l.gain.reward.toFixed(2)}`, baseline: `posterior gap versus Policy ${l.gain.baseline} over ${l.curve.length} evaluated episodes` }
+        : best && baseline && best.key !== baseline.key
         ? { name: `Policy ${best.key}`, success_gain: pp(best.success_rate - baseline.success_rate), reward_gain: `${best.reward - baseline.reward >= 0 ? "+" : ""}${(best.reward - baseline.reward).toFixed(2)}`, baseline: `versus Policy A across ${evaluated} evaluated episodes` }
         : { name: "Policy D", success_gain: "+16 pp", reward_gain: "+0.16", baseline: "versus Policy A across the replay benchmark" },
-      note: "Evaluation signals and preserved trajectories inform policy selection and future improvement. This replay does not claim live model training or fine-tuning.",
+      // Real learning state, when the runner has produced it: posterior per policy, reward curve, next allocation.
+      learned: l ? { posterior: l.posterior, curve: l.curve, next: l.next, best: l.best, prior: l.prior } : undefined,
+      note: l
+        ? "Rewards update a posterior over policies; `auto` runs allocate the next issue's Daytona sandboxes from it (exploit + Thompson-sampled explorers). Model weights are untouched."
+        : "Evaluation signals and preserved trajectories inform policy selection and future improvement. This replay does not claim live model training or fine-tuning.",
     },
   };
 }

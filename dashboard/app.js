@@ -464,7 +464,7 @@ function triggerPanel() {
   <div class="trigger-grid">
     <form class="trigger-form" data-form="issue"><p class="form-title">Single issue <small>live run — iterate on one issue</small></p>
       <label>Issue<select name="issue">${issueOpts || `<option value="">no open issues loaded</option>`}</select></label>
-      <label>Policy<select name="policy">${policies.map((p) => `<option value="${p.key}" ${p.key === t.policy ? "selected" : ""}>${p.key} · ${esc(p.label)}</option>`).join("")}</select></label>
+      <label>Policy<select name="policy">${policies.map((p) => `<option value="${p.key}" ${p.key === t.policy ? "selected" : ""}>${p.key} · ${esc(p.label)}</option>`).join("")}<option value="auto" ${t.policy === "auto" ? "selected" : ""}>auto · learned allocation (${cache.config?.rollouts ?? 2} rollouts)</option></select></label>
       <button class="primary-button" type="submit" ${state.busy ? "disabled" : ""}>Run episode <span>${icons.arrow}</span></button>
       <button class="secondary-button" type="button" data-demo ${state.busy ? "disabled" : ""} title="Replays a seeded episode that closes the full loop — no credits, no sandboxes">${icons.plan} Replay loop</button></form>
     <form class="trigger-form" data-form="experiment"><p class="form-title">Experiment <small>benchmark — every task × policy</small></p>
@@ -661,8 +661,21 @@ function priorityQueue(tickets) {
   };
   return `<section class="priority-queue panel"><div class="section-heading"><div><p class="eyebrow">Priority queue</p><h2>Work needing attention now</h2></div><span class="queue-count">${tickets.length} highlighted</span></div><div class="queue-list">${tickets.map(row).join("")}</div></section>`;
 }
+function learningCurve(curve) {
+  if (curve.length < 2) return "";
+  const w = 240, h = 48, n = curve.length;
+  const x = (i) => (i / (n - 1)) * w, y = (r) => h - 4 - r * (h - 8);
+  const pts = curve.map((c, i) => `${x(i).toFixed(1)},${y(c.reward).toFixed(1)}`).join(" ");
+  const dots = curve.map((c, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(c.reward).toFixed(1)}" r="2.5" class="curve-${c.success ? "ok" : "fail"}"><title>${esc(c.policy)} · ${esc(c.task_id)} · ${c.reward.toFixed(2)}</title></circle>`).join("");
+  return `<div class="learning-curve"><p>Reward per evaluated episode</p><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="learning curve"><polyline points="${pts}"/>${dots}</svg></div>`;
+}
+function learnedState(ls) {
+  if (!ls) return "";
+  const rows = ls.posterior.map((p) => `<span class="posterior-row ${ls.best === p.key ? "is-best" : ""}"><b>${esc(p.key)}</b><i style="width:${Math.round(p.mean * 100)}%"></i><em>${p.mean.toFixed(2)}${p.n ? ` · n=${p.n}` : ""}</em></span>`).join("");
+  return `<div class="posterior"><p>Policy posterior <small>prior ${ls.prior.mean} × ${ls.prior.weight}</small></p>${rows}<small>Next auto run: ${esc(ls.next.policies.join(", "))} — ${esc(ls.next.reason)}</small></div>${learningCurve(ls.curve)}`;
+}
 function learningEvidence(l) {
-  return `<section class="learning-evidence panel"><div class="section-heading"><div><p class="eyebrow">Reinforcement evidence</p><h2>Each outcome strengthens the next decision</h2></div><span class="learning-mark">↗</span></div><p class="section-context">${esc(l.period)}</p><div class="learning-metrics">${l.metrics.map((m) => `<article><p>${esc(m.label)}</p><strong>${esc(m.value)}</strong><span>${esc(m.note)}</span></article>`).join("")}</div><div class="policy-gain"><p>Measured policy gain</p><h3>${esc(l.policy.name)}</h3><div><strong>${esc(l.policy.success_gain)}</strong><span>success</span><strong>${esc(l.policy.reward_gain)}</strong><span>reward</span></div><small>${esc(l.policy.baseline)}</small></div><p class="learning-note">${esc(l.note)}</p><a class="text-button" href="#/experiments/all/results">Inspect policy evidence →</a></section>`;
+  return `<section class="learning-evidence panel"><div class="section-heading"><div><p class="eyebrow">Reinforcement evidence</p><h2>Each outcome strengthens the next decision</h2></div><span class="learning-mark">↗</span></div><p class="section-context">${esc(l.period)}</p><div class="learning-metrics">${l.metrics.map((m) => `<article><p>${esc(m.label)}</p><strong>${esc(m.value)}</strong><span>${esc(m.note)}</span></article>`).join("")}</div><div class="policy-gain"><p>Measured policy gain</p><h3>${esc(l.policy.name)}</h3><div><strong>${esc(l.policy.success_gain)}</strong><span>success</span><strong>${esc(l.policy.reward_gain)}</strong><span>reward</span></div><small>${esc(l.policy.baseline)}</small></div>${learnedState(l.learned)}<p class="learning-note">${esc(l.note)}</p><a class="text-button" href="#/experiments/all/results">Inspect policy evidence →</a></section>`;
 }
 function overviewView() {
   const o = cache.overview;

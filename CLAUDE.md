@@ -14,3 +14,5 @@ runner; do not couple it directly to internal artifact files or storage.
 - `.data/` is generated output and gitignored. Episode dirs carry `status.json`, `log.jsonl`, `task.json` + artifacts;
   `dashboard/adapter.mjs` is the only reader. `dashboard/server.mjs` also spawns runs (`POST /api/runs/*`).
 - Real issues come from `pnpm issue`/`pnpm tasks:import`; per-repo commands live in `REPO_PROFILES` (`src/github.ts`).
+- Learning loop lives in `src/learn.ts`: reward → per-policy posterior → sandbox allocation for `pnpm issue <ref> auto`. It
+  writes `.data/learned.json` (read by the dashboard via `/api/policy`); episode dirs stay read-only to it.

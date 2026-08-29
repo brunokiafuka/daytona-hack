@@ -6,6 +6,7 @@
  *   GET  /api/experiments         experiment runs (saved files + live experiment ids)
  *   GET  /api/experiments/:id     aggregated policy/task comparison (id "all" = every episode)
  *   GET  /api/overview            organisation replay overview (schema 1.1 `overview`)
+ *   GET  /api/policy              learned policy posterior + next allocation (.data/learned.json, written by the runner)
  *   GET  /api/tasks               imported benchmark tasks
  *   GET  /api/issues?repo=o/r     open GitHub issues (via gh)
  *   GET  /api/sandboxes           live Daytona sandboxes (labels tell which episode/phase owns them)
@@ -26,7 +27,7 @@ import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import { POLICIES, benchmark, overview, episodeDetail, experimentDetail, listEpisodes, listExperiments, listTasks } from "./adapter.mjs";
+import { POLICIES, benchmark, learned, overview, episodeDetail, experimentDetail, listEpisodes, listExperiments, listTasks } from "./adapter.mjs";
 
 const run = promisify(execFile);
 const root = fileURLToPath(new URL(".", import.meta.url));
@@ -70,11 +71,12 @@ const slugOf = (input) => input.match(/github\.com\/([^/]+\/[^/]+)\/issues\/(\d+
 
 function triggerIssue(body) {
   const policy = body.policy ?? "A";
-  if (!POLICIES[policy]) throw new Error(`unknown policy ${policy}`);
+  if (policy !== "auto" && !POLICIES[policy]) throw new Error(`unknown policy ${policy}`);
   const m = slugOf(String(body.issue ?? ""));
   if (!m) throw new Error("issue must be owner/repo#N or an issue URL");
   const repo = m[1].split("/")[1];
-  const episodeId = `${repo}-${m[2]}-${POLICIES[policy].name}-${randomUUID().slice(0, 8)}`;
+  // `auto` allocates ROLLOUTS policies from the learned posterior; the pre-assigned id goes to the exploit rollout.
+  const episodeId = `${repo}-${m[2]}-${policy === "auto" ? "auto" : POLICIES[policy].name}-${randomUUID().slice(0, 8)}`;
   return startRun("issue", ["issue", `${m[1]}#${m[2]}`, policy], { EPISODE_ID: episodeId }, { episode_id: episodeId, issue: `${m[1]}#${m[2]}`, policy });
 }
 
@@ -144,10 +146,11 @@ async function api(req, res, url) {
     if (path.startsWith("/experiments/")) { const id = decodeURIComponent(path.slice(13)); const d = id === "all" ? benchmark(url.searchParams.get("demo") === "1") : experimentDetail(id); return d ? json(res, 200, { updated_at: now, experiment: d }) : json(res, 404, { error: "experiment not found" }); }
     if (path === "/tasks") return json(res, 200, { tasks: listTasks() });
     if (path === "/overview") return json(res, 200, { schema_version: "1.1", updated_at: now, overview: overview() });
+    if (path === "/policy") return json(res, 200, { schema_version: "1.1", updated_at: now, learned: learned() });
     if (path === "/issues") { try { return json(res, 200, { repo: url.searchParams.get("repo") ?? DEFAULT_REPO, issues: await issues(url.searchParams.get("repo") ?? DEFAULT_REPO) }); } catch (e) { return json(res, 502, { error: e.message, issues: [] }); } }
     if (path === "/sandboxes") return json(res, 200, { updated_at: now, ...(await sandboxes()) });
     if (path === "/runs") { for (const r of runs.values()) if (r.record.state === "running" && !r.child && !alive(r.record.pid)) { r.record.state = "done"; r.record.finished_at = now; persist(r.record); } return json(res, 200, { runs: [...runs.values()].map((r) => r.record).sort((a, b) => b.started_at.localeCompare(a.started_at)) }); }
-    if (path === "/config") return json(res, 200, { repo: DEFAULT_REPO, policies: Object.values(POLICIES), model: process.env.OPENAI_MODEL ?? "gpt-5.4-mini", concurrency: Number(process.env.CONCURRENCY ?? 2) });
+    if (path === "/config") return json(res, 200, { repo: DEFAULT_REPO, policies: Object.values(POLICIES), model: process.env.OPENAI_MODEL ?? "gpt-5.4-mini", concurrency: Number(process.env.CONCURRENCY ?? 2), rollouts: Number(process.env.ROLLOUTS ?? 2) });
   }
   if (req.method === "POST") {
     let body; try { body = await readBody(req); } catch { return json(res, 400, { error: "invalid json" }); }

@@ -3,6 +3,7 @@ import "dotenv/config";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 import { fetchIssue, parseIssueRef, saveTask, taskFromIssue } from "./github.js";
+import { LEARNED_FILE, allocate, writeLearned } from "./learn.js";
 import { POLICIES, installShutdownHandlers, runEpisode } from "./orchestrator.js";
 import type { EpisodeResult, Policy } from "./orchestrator.js";
 import { bootRepoSandbox } from "./sandbox.js";
@@ -13,11 +14,13 @@ import type { Task } from "./tasks.js";
  * CLI.
  *   pnpm episode <task-id> [policy]          one episode (default policy A)
  *   pnpm issue <owner/repo#N|url> [policy]   live run: import the GitHub issue as a task, then one episode
+ *                                            policy `auto`: ROLLOUTS parallel sandboxes allocated from the learned posterior, best reward wins
+ *   pnpm learn                               recompute .data/learned.json (policy posterior + next allocation) and print it
  *   pnpm tasks:import <owner/repo> <N,N,..>  import issues as benchmark tasks (tasks/<repo>-<N>.json)
  *   pnpm experiment [policies] [tasks]       e.g. `pnpm experiment A,B,D` or `A,D scribl-15,scribl-16`
  *   pnpm sandbox:smoke                       boot a sandbox, run a command, tear down
  *
- * Env: EPISODE_ID / EXPERIMENT_ID pre-assign ids (used by the dashboard trigger), CONCURRENCY for experiments.
+ * Env: EPISODE_ID / EXPERIMENT_ID pre-assign ids (used by the dashboard trigger), CONCURRENCY for experiments, ROLLOUTS for `auto`.
  */
 const [cmd, ...rest] = process.argv.slice(2);
 installShutdownHandlers();
@@ -65,6 +68,7 @@ async function experiment(policies: Policy[], tasks: Task[], experimentId?: stri
       }
     }),
   );
+  writeLearned();
   mkdirSync(".data/experiments", { recursive: true });
   const file = `.data/experiments/${experimentId ?? new Date().toISOString().replace(/[:.]/g, "-")}.json`;
   writeFileSync(file, JSON.stringify(results, null, 2));
@@ -85,24 +89,55 @@ async function experiment(policies: Policy[], tasks: Task[], experimentId?: stri
   console.log(`\nsaved ${file}`);
 }
 
+/**
+ * The learning loop's action: sample ROLLOUTS policies from the posterior, run
+ * them as parallel Daytona sandboxes on the same issue, keep the best-rewarded
+ * episode. Each rollout is a normal episode, so it also becomes training data.
+ */
+async function autoRollouts(task: Task): Promise<EpisodeResult> {
+  const alloc = allocate(Number(process.env.ROLLOUTS ?? 2));
+  const experimentId = process.env.EXPERIMENT_ID ?? `auto-${task.task_id}-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+  console.log(`auto: ${alloc.reason}`);
+  const results = await Promise.all(
+    alloc.policies.map((key, i) =>
+      runEpisode(task, policy(key), log(`${task.task_id}/${key}`), { experimentId, episodeId: i === 0 ? process.env.EPISODE_ID : undefined }),
+    ),
+  );
+  for (const r of results) console.log(`${r.episode_id}: ${summarize(r)}`);
+  const evaluated = results.filter((r) => r.eval);
+  const best = evaluated.length ? evaluated.reduce((a, b) => (b.eval!.reward > a.eval!.reward ? b : a)) : results[0]!;
+  console.log(`auto: best ${best.policy} (${best.eval ? `reward ${best.eval.reward.toFixed(2)}` : best.status})`);
+  return best;
+}
+
 switch (cmd) {
   case "episode": {
     const [taskId, policyKey = "A"] = rest;
     if (!taskId) throw new Error("usage: pnpm episode <task-id> [policy]");
     const task = loadTask(taskId);
     const r = await runEpisode(task, policy(policyKey), log(`${taskId}/${policyKey}`), { episodeId: process.env.EPISODE_ID });
+    writeLearned();
     console.log(`\n${r.episode_id}: ${summarize(r)}`);
     if (r.diff) console.log(`\n${r.diff}`);
     break;
   }
   case "issue": {
     const [refText, policyKey = "A"] = rest;
-    if (!refText) throw new Error("usage: pnpm issue <owner/repo#N|issue-url> [policy]");
+    if (!refText) throw new Error("usage: pnpm issue <owner/repo#N|issue-url> [policy|auto]");
     const ref = parseIssueRef(refText);
     const [task] = await importIssues(ref.slug, [ref.number]);
-    const r = await runEpisode(task!, policy(policyKey), log(`${task!.task_id}/${policyKey}`), { episodeId: process.env.EPISODE_ID });
+    const r = policyKey === "auto" ? await autoRollouts(task!) : await runEpisode(task!, policy(policyKey), log(`${task!.task_id}/${policyKey}`), { episodeId: process.env.EPISODE_ID });
+    writeLearned();
     console.log(`\n${r.episode_id}: ${summarize(r)}`);
     if (r.diff) console.log(`\n${r.diff}`);
+    break;
+  }
+  case "learn": {
+    const l = writeLearned();
+    console.log(`${"policy".padEnd(8)} ${"n".padStart(3)} ${"ok".padStart(3)} ${"posterior".padStart(10)} ${"raw".padStart(6)} ${"±".padStart(6)}`);
+    for (const p of l.posterior) console.log(`${p.key.padEnd(8)} ${String(p.n).padStart(3)} ${String(p.successes).padStart(3)} ${p.mean.toFixed(3).padStart(10)} ${(p.raw === undefined ? "—" : p.raw.toFixed(2)).padStart(6)} ${p.stderr.toFixed(2).padStart(6)}`);
+    console.log(`\nbest: ${l.best ?? "—"}${l.gain ? `  gain vs ${l.gain.baseline}: ${(l.gain.success * 100).toFixed(0)} pp success, ${l.gain.reward >= 0 ? "+" : ""}${l.gain.reward.toFixed(2)} reward` : ""}`);
+    console.log(`next: ${l.next.policies.join(",")} — ${l.next.reason}\nsaved ${LEARNED_FILE}`);
     break;
   }
   case "tasks:import": {
@@ -128,5 +163,5 @@ switch (cmd) {
     break;
   }
   default:
-    console.log("usage: pnpm episode <task-id> [policy] | pnpm issue <owner/repo#N> [policy] | pnpm tasks:import <owner/repo> <N,..> | pnpm experiment [policies] [tasks] | pnpm sandbox:smoke");
+    console.log("usage: pnpm episode <task-id> [policy] | pnpm issue <owner/repo#N> [policy|auto] | pnpm learn | pnpm tasks:import <owner/repo> <N,..> | pnpm experiment [policies] [tasks] | pnpm sandbox:smoke");
 }

@@ -73,6 +73,11 @@ Outputs land in `.data/episodes/<episode_id>/` (`events.jsonl`, `plan.json`, `re
 - **Every agent is budgeted** (steps, wall clock) and tool output is clipped to 8k chars so one test dump doesn't
   sink the context.
 - **Reviewer gates, doesn't score.** It emits a boolean rubric; it is not part of the reward.
+- **Learning is a bandit over policies, not weights.** `src/learn.ts` turns every evaluated episode's reward into a
+  shrunk per-policy posterior (prior 0.5 × 3 pseudo-episodes; infra failures excluded). `pnpm issue <ref> auto`
+  exploits the best policy and Thompson-samples the remaining `ROLLOUTS` slots, runs them as parallel Daytona
+  sandboxes on the same issue, and keeps the best-rewarded patch. Each rollout is itself an episode, so the posterior
+  updates from it. `.data/learned.json` is the artifact; the overview's "Reinforcement evidence" panel reads it.
 - **Planner is graded against `reference_files`** when the task has them — precision/recall on file identification,
   no LLM judge needed.
 
@@ -81,6 +86,8 @@ Outputs land in `.data/episodes/<episode_id>/` (`events.jsonl`, `plan.json`, `re
 ```bash
 pnpm dashboard                                  # http://localhost:4173 — live UI + API over .data/
 pnpm issue uselucerna/scribl#15 A               # live run: import the issue as a task, run one episode
+pnpm issue uselucerna/scribl#15 auto            # learning loop: ROLLOUTS parallel sandboxes allocated from the posterior, best reward wins
+pnpm learn                                      # recompute .data/learned.json (policy posterior, next allocation) and print it
 pnpm tasks:import uselucerna/scribl 5,6,7,15     # import issues as benchmark tasks (tasks/scribl-<N>.json)
 pnpm experiment A,B,C scribl-15,scribl-5         # benchmark; EXPERIMENT_ID/CONCURRENCY optional
 ```
