@@ -34,6 +34,18 @@ cp .env.example .env     # DAYTONA_API_KEY, OPENAI_API_KEY
 pnpm sandbox:smoke       # boots a sandbox, runs a command, tears it down
 ```
 
+## Dashboard
+
+The fixture-backed dashboard is ready to demo before agent runs are available. It uses a versioned read model and is
+designed to switch to a runner-backed adapter without coupling the UI to internal artifact files.
+
+```sh
+pnpm dashboard
+```
+
+Open [http://localhost:4173](http://localhost:4173). The initial replay includes an active episode, an inspectable
+agent trace, and policy comparison. Its data contract lives in `dashboard/data.js`.
+
 ## Run
 
 ```sh
