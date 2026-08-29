@@ -1,7 +1,7 @@
 import { loadDashboardData } from "/data.js";
 
 const app = document.querySelector("#app");
-const state = { view: "episode", traceFilter: "all", selectedEvent: "e09" };
+const state = { view: "overview", traceFilter: "all", selectedEvent: "e09" };
 const icons = { overview: "⌘", episode: "◉", trace: "≡", experiments: "↗", read: "⌕", search: "⌕", plan: "✦", edit: "✎", test: "✓" };
 const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
 const title = (word) => word[0].toUpperCase() + word.slice(1);
@@ -43,11 +43,28 @@ function episodeView(data) {
   return `<main class="page episode-page">${header(`${episode.issue.repository} · ${episode.task_id}`, `Issue #${episode.issue.number}: ${escapeHtml(episode.issue.title)}`, `<span class="status-running"><i></i> Episode running</span> <span>Policy ${episode.policy.key}</span> <span>Base ${episode.issue.base_commit}</span>`, action)}${pipeline(episode)}${metrics(episode)}<div class="split-view">${tracePanel(episode, true)}${context(episode)}</div>${evidence(episode)}</main>`;
 }
 
+function overviewMetric(metric) {
+  return `<article class="overview-metric overview-metric-${metric.tone}"><p>${escapeHtml(metric.label)}</p><strong>${escapeHtml(metric.value)}</strong><span>${escapeHtml(metric.note)}</span></article>`;
+}
+
+function organisationPipeline(pipelineData) {
+  const stages = pipelineData.stages.map((stage, index) => `<article class="flow-stage flow-stage-${stage.key}"><p class="flow-index">0${index + 1}</p><h3>${escapeHtml(stage.label)}</h3><strong>${escapeHtml(stage.value)}</strong><span>${escapeHtml(stage.detail)}</span>${stage.score ? `<div class="success-score"><b>${escapeHtml(stage.score.value)}</b><em>${escapeHtml(stage.score.label)}</em></div>` : ""}</article>${index < pipelineData.stages.length - 1 ? '<span class="flow-arrow" aria-hidden="true">→</span>' : ""}`).join("");
+  const resolved = pipelineData.stages.find((stage) => stage.key === "resolved");
+  return `<section class="organisation-pipeline panel"><div class="section-heading"><div><p class="eyebrow">Autonomous delivery pipeline</p><h2>From ticket intake to verified resolution</h2></div><div class="pipeline-utilities">${resolved?.score ? `<span class="pipeline-success">${escapeHtml(resolved.score.value)} ${escapeHtml(resolved.score.label)}</span>` : ""}<span class="replay-label">Replay data</span></div></div><p class="section-context">${escapeHtml(pipelineData.period)}</p><div class="flow-track">${stages}</div></section>`;
+}
+
+function priorityQueue(tickets) {
+  return `<section class="priority-queue panel"><div class="section-heading"><div><p class="eyebrow">Priority queue</p><h2>Work needing attention now</h2></div><span class="queue-count">${tickets.length} highlighted</span></div><div class="queue-list">${tickets.map((ticket) => `<article class="queue-row"><div class="queue-ticket"><span class="queue-id">${escapeHtml(ticket.id)}</span><div><h3>${escapeHtml(ticket.title)}</h3><p>${escapeHtml(ticket.repository)}</p></div></div><span class="priority priority-${ticket.priority.toLowerCase()}">${escapeHtml(ticket.priority)}</span><span class="queue-age">${escapeHtml(ticket.age)}</span><span class="queue-stage">${escapeHtml(ticket.stage)}</span></article>`).join("")}</div></section>`;
+}
+
+function learningEvidence(learning) {
+  return `<section class="learning-evidence panel"><div class="section-heading"><div><p class="eyebrow">Reinforcement evidence</p><h2>Each outcome strengthens the next decision</h2></div><span class="learning-mark">↗</span></div><p class="section-context">${escapeHtml(learning.period)}</p><div class="learning-metrics">${learning.metrics.map((metric) => `<article><p>${escapeHtml(metric.label)}</p><strong>${escapeHtml(metric.value)}</strong><span>${escapeHtml(metric.note)}</span></article>`).join("")}</div><div class="policy-gain"><p>Measured policy gain</p><h3>${escapeHtml(learning.policy.name)}</h3><div><strong>${escapeHtml(learning.policy.success_gain)}</strong><span>success</span><strong>${escapeHtml(learning.policy.reward_gain)}</strong><span>reward</span></div><small>${escapeHtml(learning.policy.baseline)}</small></div><p class="learning-note">${escapeHtml(learning.note)}</p><button class="text-button" data-view="experiments">Inspect policy evidence →</button></section>`;
+}
+
 function overviewView(data) {
-  const best = data.experiments.reduce((leader, item) => item.reward > leader.reward ? item : leader, data.experiments[0]);
-  const active = data.episode;
+  const overview = data.overview;
   const action = `<button class="primary-button" data-view="episode">Open active episode <span>→</span></button>`;
-  return `<main class="page overview-page">${header("Engineering agent observability", "Every decision leaves evidence.", "Follow an issue from plan to reward, then compare the policy that got it there.", action)}<section class="overview-hero"><article class="hero-card panel"><p class="eyebrow">Active episode</p><h2>#${active.issue.number} · ${escapeHtml(active.issue.title)}</h2><div class="hero-status"><span class="pulse"></span><b>Coder is resolving 3 remaining failures</b></div><div class="hero-path"><span class="complete">Planner</span><i></i><span class="current">Coder</span><i></i><span>Reviewer</span><i></i><span>Evaluation</span></div><button class="text-button" data-view="episode">Follow the episode →</button></article><article class="hero-card standout"><p class="eyebrow">Current leader</p><h2>Policy ${best.key}</h2><strong>${best.reward.toFixed(2)} reward</strong><p>${best.success}% success across the benchmark</p><button class="text-button" data-view="experiments">Compare policies →</button></article></section><section class="overview-grid"><article class="panel overview-table"><div class="section-heading"><div><p class="eyebrow">Benchmark snapshot</p><h2>Policy outcomes</h2></div><button class="text-button" data-view="experiments">All results →</button></div>${data.experiments.map((item) => `<div class="policy-mini"><span class="policy-key ${item.colour}">${item.key}</span><strong>${item.name}</strong><span>${item.success}% success</span><b>${item.reward.toFixed(2)}</b></div>`).join("")}</article>${tracePanel(active, true)}</section></main>`;
+  return `<main class="page overview-page">${header(`Organisation-wide operations · ${overview.snapshot_label}`, "Autonomous engineering capacity, visible.", "A deterministic replay of an engineering organisation where every ticket, agent handoff, and evaluated outcome remains inspectable.", action)}${organisationPipeline(overview.pipeline)}<section class="backlog-health panel"><div class="section-heading"><div><p class="eyebrow">Backlog health</p><h2>Demand is high. The work is moving.</h2></div><span class="backlog-period">${escapeHtml(overview.backlog.period)}</span></div><div class="overview-metrics">${overview.backlog.metrics.map(overviewMetric).join("")}</div></section><section class="overview-lower">${priorityQueue(overview.priority_queue)}${learningEvidence(overview.learning)}</section></main>`;
 }
 
 function experimentsView(data) {

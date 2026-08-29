@@ -3,7 +3,7 @@
  * the runner adapter when it exists; the UI never imports runner internals.
  */
 export const dashboardData = {
-  schema_version: "1.0",
+  schema_version: "1.1",
   source: "replay",
   updated_at: "2026-08-29T14:23:08Z",
   episode: {
@@ -47,6 +47,43 @@ export const dashboardData = {
       { id: "e08", step: "05", agent: "coder", kind: "edit", title: "Apply UTC-safe expiry calculation", command: "write_file src/auth/session.ts", output: "Changed one production file.", time: "14:22:01", duration: "0.7s", state: "ok" },
       { id: "e09", step: "06", agent: "coder", kind: "test", title: "Run focused auth tests", command: "pnpm test auth", output: "44 / 47 passed. Agent is investigating the remaining edge cases.", time: "14:22:28", duration: "19.1s", state: "running" },
     ],
+  },
+  overview: {
+    snapshot_label: "Deterministic replay snapshot",
+    backlog: {
+      period: "Current organisation snapshot",
+      metrics: [
+        { label: "Open backlog", value: "12,847", note: "Across 38 engineering services", tone: "backlog" },
+        { label: "Created today", value: "428", note: "18 new issues per hour", tone: "intake" },
+        { label: "Urgent", value: "238", note: "Critical and high-priority work", tone: "urgent" },
+        { label: "Aging tickets", value: "1,109", note: "Open for more than 7 days", tone: "aging" },
+      ],
+    },
+    pipeline: {
+      period: "Current work in progress · resolved output over the last 30 days",
+      stages: [
+        { key: "backlog", label: "Incoming backlog", value: "12,847", detail: "428 created today" },
+        { key: "planner", label: "Planner", value: "1,284", detail: "Triaging scope and risk" },
+        { key: "coder", label: "Coder", value: "742", detail: "Implementing tested fixes" },
+        { key: "reviewer", label: "Reviewer", value: "186", detail: "Independent quality gates" },
+        { key: "resolved", label: "Resolved", value: "6,482", detail: "Verified in the last 30 days", score: { value: "86%", label: "verified success score" } },
+      ],
+    },
+    priority_queue: [
+      { id: "#6911", title: "Prevent duplicate invoice captures after payment retries", repository: "acme/payments-api", priority: "Critical", age: "8m", stage: "Planner" },
+      { id: "#1842", title: "Refresh sessions before they expire", repository: "acme/auth-service", priority: "High", age: "17m", stage: "Coder" },
+      { id: "#8247", title: "Preserve audit events during shard failover", repository: "acme/event-platform", priority: "High", age: "24m", stage: "Reviewer" },
+      { id: "#3574", title: "Stop stale inventory reservations after cancelled orders", repository: "acme/fulfilment-core", priority: "High", age: "41m", stage: "Planner" },
+    ],
+    learning: {
+      period: "Evidence captured from evaluated episodes",
+      metrics: [
+        { label: "Evaluated trajectories", value: "7,263", note: "Tool actions, observations, and outcomes retained" },
+        { label: "Validated patterns", value: "184", note: "Reusable, evidence-backed engineering strategies" },
+      ],
+      policy: { name: "Policy D", success_gain: "+16 pp", reward_gain: "+0.16", baseline: "versus Policy A across the replay benchmark" },
+      note: "Evaluation signals and preserved trajectories inform policy selection and future improvement. This replay does not claim live model training or fine-tuning.",
+    },
   },
   experiments: [
     { key: "A", name: "Planner + Coder + Reviewer", success: 70, reward: 0.71, duration: "6m 12s", tokens: "41.2k", steps: 26, review: 83, colour: "blue" },
