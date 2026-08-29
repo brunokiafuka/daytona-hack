@@ -336,6 +336,34 @@ a.queue-row:hover h3 { text-decoration:underline; }
 .policy-gain small { display:block; margin-top:6px; color:var(--muted); }
 .learning-note { margin:0 0 14px; color:var(--muted); font-size:12px; line-height:1.55; }
 .learning-evidence .text-button { align-self:flex-start; margin-top:auto; }
+.overview-ticket-flow { padding:18px 20px; margin-top:12px; overflow:hidden; }
+.overview-flow-viewport { overflow-x:auto; margin:16px -20px -1px; }
+.overview-flow-board { position:relative; min-width:920px; height:348px; overflow:hidden; border-top:1px solid var(--line-soft); border-bottom:1px solid var(--line-soft); background:radial-gradient(circle at 51% 45%,var(--blue-soft),transparent 27%),linear-gradient(90deg,var(--mint-soft),transparent 35%,var(--violet-soft)); }
+.overview-flow-grid { display:grid; grid-template-columns:23% 54% 23%; height:100%; }
+.overview-flow-source,.overview-flow-results { position:relative; padding:22px 23px; background:color-mix(in srgb,var(--panel) 50%,transparent); }
+.overview-flow-source { border-right:1px solid var(--line-soft); } .overview-flow-results { border-left:1px solid var(--line-soft); }
+.overview-flow-source>p,.overview-flow-results>p,.overview-sandbox-label { margin:0; color:var(--dim); font:10px var(--pixel); text-transform:uppercase; letter-spacing:.06em; }
+.overview-flow-source h3,.overview-flow-results h3 { margin:7px 0 0; font-size:24px; letter-spacing:-.8px; }
+.overview-flow-source>span,.overview-flow-results>span { display:block; margin-top:7px; color:var(--muted); font-size:11px; }
+.overview-queue { position:absolute; right:22px; bottom:24px; left:23px; display:grid; gap:4px; }
+.overview-queue-card { display:flex; min-width:0; align-items:center; gap:8px; padding:6px 7px; border:1px solid var(--line); border-left:2px solid var(--blue); border-radius:4px; background:var(--panel-2); color:var(--muted); font:9px var(--mono); }
+.overview-queue-card:nth-child(2) { border-left-color:var(--violet); } .overview-queue-card:nth-child(3) { border-left-color:var(--amber); } .overview-queue-card:nth-child(4) { border-left-color:var(--mint); }
+.overview-queue-card b { color:var(--text); font-weight:500; } .overview-queue-card span { overflow:hidden; margin-left:auto; text-overflow:ellipsis; white-space:nowrap; }
+.overview-flow-sandbox { position:relative; padding:22px 25px; } .overview-sandbox-label { display:flex; justify-content:space-between; } .overview-sandbox-label span { color:var(--blue); } .overview-sandbox-label em { font-style:normal; }
+.overview-stage-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; margin-top:18px; }
+.overview-stage { display:flex; min-height:232px; flex-direction:column; padding:14px; border:1px solid var(--line); border-top-width:2px; border-radius:var(--radius-sm); background:var(--panel-2); }
+.overview-stage.planner { border-top-color:var(--blue); } .overview-stage.coder { border-top-color:var(--violet); } .overview-stage.reviewer { border-top-color:var(--amber); }
+.overview-stage p { margin:0 0 8px; color:var(--muted); font:9px var(--mono); } .overview-stage strong { font-size:11px; line-height:1.35; } .overview-stage small { margin-top:7px; color:var(--muted); font-size:9px; line-height:1.45; }
+.overview-stage .overview-ticket-dock { min-height:104px; margin-top:auto; border:1px dashed var(--line); border-radius:4px; }
+.overview-result-stack { display:grid; gap:6px; margin-top:65px; } .overview-result-stack b { padding:7px 8px; border:1px solid var(--mint-soft); border-radius:4px; background:var(--mint-soft); color:var(--mint); font:9px var(--mono); }
+.overview-ticket-layer { position:absolute; z-index:3; inset:0; pointer-events:none; }
+.overview-moving-ticket { position:absolute; top:60%; left:8%; display:flex; width:min(118px,11.5%); min-height:32px; align-items:center; gap:6px; padding:6px 7px; border:1px solid color-mix(in srgb,var(--blue) 70%,var(--line)); border-radius:4px; background:var(--panel-2); box-shadow:0 8px 22px rgba(2,7,15,.35); font:9px var(--mono); animation:overview-ticket-run 5.6s cubic-bezier(.42,.01,.26,1) both; }
+.overview-moving-ticket::before { width:5px; height:5px; flex:0 0 auto; border-radius:50%; content:""; background:var(--ticket-colour); box-shadow:0 0 0 4px color-mix(in srgb,var(--ticket-colour) 13%,transparent); }
+.overview-moving-ticket strong { color:var(--ticket-colour); white-space:nowrap; font-weight:500; } .overview-moving-ticket span { overflow:hidden; margin-left:auto; color:var(--muted); text-overflow:ellipsis; white-space:nowrap; font-size:8px; }
+.overview-flow-footer { display:flex; justify-content:space-between; gap:20px; padding-top:14px; color:var(--dim); font:10px var(--mono); } .overview-flow-footer b { color:var(--mint); font-weight:500; white-space:nowrap; }
+.overview-queue-card.is-releasing { animation:overview-backlog-release 220ms ease-in both; } .overview-queue-card.is-shifting { animation:overview-backlog-shift 420ms cubic-bezier(.2,.8,.25,1) both; animation-delay:var(--queue-delay,0ms); }
+@keyframes overview-ticket-run { 0% { top:60%; left:8%; opacity:0; } 8% { top:60%; left:11%; opacity:1; } 19% { top:60%; left:13%; } 31% { top:57%; left:27.8%; } 47% { top:57%; left:27.8%; } 58% { top:57%; left:44.4%; } 73% { top:57%; left:44.4%; } 84% { top:57%; left:60.8%; } 93% { top:57%; left:60.8%; opacity:1; } 100% { top:57%; left:82%; opacity:0; } }
+@keyframes overview-backlog-release { to { opacity:0; transform:translateX(18px); } } @keyframes overview-backlog-shift { from { opacity:.6; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
 @media (max-width:1100px) { .overview-lower { grid-template-columns:1fr; } .overview-metrics { grid-template-columns:repeat(2,1fr); } .flow-track { gap:5px; } .flow-stage { min-width:118px; padding:13px; } .flow-stage h3 { margin-top:12px; font-size:12px; } .flow-stage>strong { font-size:22px; } }
 @media (max-width:520px) { .overview-metrics { grid-template-columns:1fr 1fr; gap:8px; } .flow-track { overflow:auto; margin-right:-2px; padding-bottom:6px; } .flow-stage { min-width:145px; } .queue-row { grid-template-columns:minmax(0,1fr) 60px 36px; gap:8px; } .queue-stage { display:none; } .queue-ticket h3 { white-space:normal; line-height:1.35; } }
 
