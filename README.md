@@ -60,6 +60,67 @@ Policies (`src/orchestrator.ts`): **A** planner+coder+reviewer · **B** planner+
 Outputs land in `.data/episodes/<episode_id>/` (`events.jsonl`, `plan.json`, `review.json`, `diff.json`, `eval.json`,
 `result.json`) and `.data/experiments/<timestamp>.json`.
 
+## Learning loop (RL)
+
+There is no model training here. The learning is a **bandit over policies**: the four policies are the action space,
+the episode reward (`src/eval.ts`) is the signal, and Daytona makes it cheap to sample several rollouts per issue.
+`src/learn.ts` owns it.
+
+```text
+issue ──▶ allocate ROLLOUTS policies from the posterior (exploit best + Thompson-sampled explorers)
+      ──▶ run them as parallel Daytona sandboxes on the same issue
+      ──▶ hidden oracle scores each rollout → reward
+      ──▶ keep the best-rewarded patch; every rollout updates the posterior for the next issue
+```
+
+**Posterior.** Per policy, mean reward shrunk toward a prior (`0.5`, weight `3` pseudo-episodes) so one lucky
+episode can't take over, plus a standard error that narrows as `n` grows. Episodes that died on infrastructure
+(rate limit, no credits, sandbox 5xx, stopped by user) are excluded — they say nothing about the policy. Demo/replay
+episodes are excluded too.
+
+**Allocation.** Slot 1 exploits the highest posterior mean; each remaining slot is a Thompson sample
+(`mean + stderr × N(0,1)`), so under-tested policies keep getting sandboxes until they are measured.
+
+### Commands
+
+```sh
+pnpm learn                                  # recompute .data/learned.json from every evaluated episode, print the table
+pnpm issue uselucerna/scribl#15 auto        # learning run: ROLLOUTS (default 2) parallel sandboxes, best reward wins
+ROLLOUTS=3 pnpm issue uselucerna/scribl#16 auto
+pnpm episode scribl-15 B                    # any evaluated episode also updates the posterior
+```
+
+`pnpm learn` on a fresh checkout prints every policy at `0.500` and `next: A,<sampled>` with reason
+*"no evaluated episodes yet — uniform prior"*; that is the correct cold start. `auto` prints the allocation and its
+reason first, one `reward=` line per rollout, then `auto: best <policy>` for the patch it kept. Rollouts share an
+experiment id (`auto-<task>-<timestamp>`) so they appear as one experiment in the dashboard.
+
+### Artifact and dashboard
+
+`.data/learned.json` (contract in `Learned`, `src/learn.ts`): `posterior[]`, `best`, `gain` (posterior gap vs
+policy A), `curve[]` (reward per evaluated episode, in start order) and `next` (what the next `auto` run would do).
+It is rewritten after every `episode`, `issue` and `experiment`. The dashboard serves it at `GET /api/policy`, offers
+**auto** in the Trigger panel, and the Overview's *Reinforcement evidence* panel shows the posterior bars, the next
+allocation and the reward curve — replay figures until real episodes exist.
+
+### Testing the math without sandboxes
+
+```sh
+cat > /tmp/learn-check.ts <<'EOT'
+import { posterior, allocate } from "./src/learn.ts";
+const mk = (p: string, r: number, k: number) => Array.from({ length: k }, (_, i) => ({ episode_id: p + i, policy: p, task_id: "t", started_at: "", reward: r, success: r > 0.7 }));
+const post = posterior([...mk("planner+coder+reviewer", 0.3, 6), ...mk("planner+coder+reviewer+retry", 0.9, 4), ...mk("planner+coder", 0.5, 1)]);
+const c: Record<string, number> = {};
+for (let i = 0; i < 2000; i++) for (const k of allocate(2, post).policies.slice(1)) c[k] = (c[k] ?? 0) + 1;
+console.log("exploit:", allocate(2, post).policies[0], "explorer slot:", c);
+EOT
+./node_modules/.bin/tsx /tmp/learn-check.ts   # expect exploit D; explorer B ≈ C ≫ A
+```
+
+**Cost note.** `auto` multiplies OpenAI spend per issue by `ROLLOUTS`; with a 500k TPM limit keep `ROLLOUTS=2` and
+consider `OPENAI_MODEL_PLANNER=gpt-5.4-mini`. Tuning `minConfidence` / `maxRetries` from reward, and feeding
+successful trajectories back into the planner prompt, are the natural next steps (see `docs/TECHNICAL_PLAN.md` §10).
+
 ## Design decisions worth knowing
 
 - **One sandbox per phase, handed off by artifact.** The planner runs read-only on its own machine and returns a
