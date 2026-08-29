@@ -6,6 +6,12 @@ inside a [Daytona](https://daytona.io) sandbox and every agent action recorded a
 Structure follows the [technical plan](https://docs.google.com/document/d/1KAVbx_shjXag1OA8HArvU0Iq6HZzxM1bU7X0bvCX7gA/edit).
 The sandbox/tool-loop shape is lifted from compass's `apps/slack-server` (Modal → Daytona; the raw OpenAI fetch loop → Vercel AI SDK).
 
+## Project plans
+
+- [Technical plan](docs/TECHNICAL_PLAN.md) — versioned project intent, architecture, scope, and definition of done.
+- [Dashboard proposal](DASHBOARD_PROPOSAL.md) — contract-first demo dashboard design, data boundary, and delivery plan.
+- [Agent guidance](AGENTS.md) — decision-making constraints for coding agents working in this repository.
+
 ```
 src/
   sandbox.ts        Daytona sandbox: boot → clone@commit → exec/read/write → terminate
